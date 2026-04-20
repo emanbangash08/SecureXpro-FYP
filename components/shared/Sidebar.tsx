@@ -71,7 +71,7 @@ export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'agent' }
       {/* Nav Items */}
       <nav style={{ flex: 1, padding: '0 10px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
         {nav.map(({ label, href, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + '/')
+          const active = href === '/scans' ? pathname === href : (pathname === href || pathname.startsWith(href + '/'))
           return (
             <Link key={href} href={href} style={{ textDecoration: 'none' }}>
               <div style={{
