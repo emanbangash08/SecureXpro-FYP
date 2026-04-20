@@ -160,7 +160,7 @@ export default function Dashboard() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 36 }}>
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '-0.5px', marginBottom: 4 }}>Security Dashboard</h1>
-          <p style={{ fontSize: 13, color: '#8899aa', fontFamily: 'var(--font-mono)' }}>Last synchronized: {new Date().toLocaleTimeString()} · Platform Overview</p>
+          <p style={{ fontSize: 13, color: '#8899aa', fontFamily: 'var(--font-mono)' }}>Last synchronized: <span suppressHydrationWarning>{new Date().toLocaleTimeString()}</span> · Platform Overview</p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
           <Link href="/scans/network" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', background: '#00e5cc', color: '#050709', fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 700, borderRadius: 10, textDecoration: 'none', boxShadow: '0 4px 14px rgba(0,229,204,0.3)' }}><Radar size={16} /> Init Network Scan</Link>
@@ -224,7 +224,7 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <div style={{ fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 600, color: '#e8edf5', marginBottom: 4, lineHeight: 1.3 }}>{item.title}</div>
-                    <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#8899aa', display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={10} /> {new Date(item.timestamp).toLocaleTimeString()}</div>
+                    <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#8899aa', display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={10} /> <span suppressHydrationWarning>{new Date(item.timestamp).toLocaleTimeString()}</span></div>
                   </div>
                 </div>
               )
@@ -270,7 +270,7 @@ export default function Dashboard() {
                       </div>
                     ) : <span style={{ fontSize: 13, color: '#4a5568' }}>—</span>}
                   </td>
-                  <td style={{ padding: '16px 24px', fontSize: 12, fontFamily: 'var(--font-mono)', color: '#8899aa' }}>{new Date(scan.startedAt).toLocaleString()}</td>
+                  <td style={{ padding: '16px 24px', fontSize: 12, fontFamily: 'var(--font-mono)', color: '#8899aa' }}><span suppressHydrationWarning>{new Date(scan.startedAt).toLocaleString()}</span></td>
                 </tr>
               ))}
             </tbody>

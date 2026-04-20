@@ -1,5 +1,6 @@
 'use client'
 import { Plus, Download, Trash2, FileText, Server, Globe, Calendar, FileArchive } from 'lucide-react'
+import Link from 'next/link'
 
 const reports = [
   { id: 'report-1', title: 'Internal Network Baseline - Q2 2024', scanType: 'network', generatedDate: '2024-04-10', generatedBy: 'sysadmin', format: 'PDF', size: '2.4 MB' },
@@ -97,9 +98,11 @@ export default function ReportsPage() {
                 </div>
 
                 <div style={{ width: 120, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                  <button style={{ padding: '8px', borderRadius: 8, background: 'rgba(0,229,204,.1)', border: '1px solid rgba(0,229,204,.2)', color: '#00e5cc', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all .2s' }}>
-                    <Download size={14} />
-                  </button>
+                  <Link href={`/reports/${rep.id}`} style={{ textDecoration: 'none' }}>
+                    <button style={{ padding: '8px', borderRadius: 8, background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#818cf8', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all .2s' }}>
+                      <FileText size={14} />
+                    </button>
+                  </Link>
                   <button style={{ padding: '8px', borderRadius: 8, background: 'transparent', border: '1px solid transparent', color: '#4a5568', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all .2s' }}
                     onMouseEnter={e => { e.currentTarget.style.color = '#ff3355'; e.currentTarget.style.background = 'rgba(255,51,85,.1)' }}
                     onMouseLeave={e => { e.currentTarget.style.color = '#4a5568'; e.currentTarget.style.background = 'transparent' }}>

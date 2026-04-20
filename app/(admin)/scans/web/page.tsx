@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { Play, RotateCcw, Globe, Bug, Search, FileText, ChevronRight, AlertTriangle, ShieldAlert, Lock, Zap } from 'lucide-react'
+import { Play, RotateCcw, Globe, Bug, Search, FileText, ChevronRight, AlertTriangle, ShieldAlert, Lock, Zap, Server } from 'lucide-react'
 
 type Stage = 'idle' | 'init' | 'spider' | 'active' | 'nikto' | 'report' | 'done'
 
@@ -438,7 +438,7 @@ export default function WebScanPage() {
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes blink { 0%,100%{opacity:1}50%{opacity:0} }
-        @keyframes pulse-node { 0%,100%{box-shadow:0 0 0 0 currentColor20}50%{box-shadow:0 0 20px 4px currentColor30} }
+        @keyframes pulse-node { 0%,100%{box-shadow:0 0 0 0 rgba(0,229,204,0.2)}50%{box-shadow:0 0 20px 4px rgba(0,229,204,0.4)} }
       `}</style>
     </div>
   )

@@ -1,5 +1,6 @@
 'use client'
 import { Download, FileText, Server, Globe, Calendar, FileArchive } from 'lucide-react'
+import Link from 'next/link'
 
 const reports = [
   { id: 'report-2', title: 'E-Commerce Platform Security Audit', scanType: 'web', generatedDate: '2024-04-12', generatedBy: 'sec_operator (You)', format: 'PDF', size: '4.1 MB' },
@@ -91,9 +92,11 @@ export default function AgentReportsPage() {
                 </div>
 
                 <div style={{ width: 80, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                  <button style={{ padding: '8px', borderRadius: 8, background: 'rgba(0,229,204,.1)', border: '1px solid rgba(0,229,204,.2)', color: '#00e5cc', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all .2s' }}>
-                    <Download size={14} />
-                  </button>
+                  <Link href={`/agent-reports/${rep.id}`} style={{ textDecoration: 'none' }}>
+                    <button style={{ padding: '8px', borderRadius: 8, background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#818cf8', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all .2s' }}>
+                      <FileText size={14} />
+                    </button>
+                  </Link>
                 </div>
                 
               </div>
