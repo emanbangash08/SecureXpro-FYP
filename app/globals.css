@@ -16,10 +16,10 @@
   --border-default: rgba(255, 255, 255, 0.08);
   --border-strong:  rgba(255, 255, 255, 0.15);
 
-  /* Accent – Cyber Indigo to Violet */
-  --accent:         #6366f1;
-  --accent-dim:     rgba(99, 102, 241, 0.1);
-  --accent-glow:    rgba(99, 102, 241, 0.4);
+  /* Accent – Cyber Cyan */
+  --accent:         #00e5cc;
+  --accent-dim:     rgba(0, 229, 204, 0.1);
+  --accent-glow:    rgba(0, 229, 204, 0.35);
 
   /* Status Colors */
   --critical:       #ef4444;
@@ -54,24 +54,24 @@
   --popover: 0 0% 3%;
   --popover-foreground: 0 0% 100%;
   
-  --primary: 236 86% 67%; /* Indigo */
-  --primary-foreground: 0 0% 100%;
-  
-  --secondary: 240 5% 15%; 
-  --secondary-foreground: 0 0% 100%;
-  
-  --muted: 240 5% 12%; 
-  --muted-foreground: 240 5% 65%;
-  
-  --accent: 236 86% 67%;
-  --accent-foreground: 0 0% 100%;
+  --primary: 174 100% 45%; /* Cyber Cyan */
+  --primary-foreground: 180 60% 5%;
+
+  --secondary: 210 12% 12%;
+  --secondary-foreground: 0 0% 90%;
+
+  --muted: 210 12% 9%;
+  --muted-foreground: 210 8% 55%;
+
+  --accent: 174 100% 45%;
+  --accent-foreground: 180 60% 5%;
   
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
   
   --border: 0 0% 12%;
   --input: 0 0% 12%;
-  --ring: 236 86% 67%;
+  --ring: 174 100% 45%;
   
   --radius: 0.75rem;
 }
@@ -111,9 +111,10 @@
 
 html, body {
   background-color: var(--bg-base);
-  background-image: 
-    radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(14, 165, 233, 0.08), transparent 25%);
+  background-image:
+    radial-gradient(circle at 12% 55%, rgba(0, 229, 204, 0.05), transparent 28%),
+    radial-gradient(circle at 88% 25%, rgba(77, 158, 255, 0.05), transparent 28%),
+    radial-gradient(circle at 50% 100%, rgba(255, 51, 85, 0.03), transparent 40%);
   background-attachment: fixed;
   color: var(--text-primary);
   font-family: var(--font-ui);
@@ -275,8 +276,8 @@ select option {
 }
 
 .stat-card:hover {
-  border-color: rgba(99, 102, 241, 0.3);
-  box-shadow: 0 8px 32px rgba(99, 102, 241, 0.1);
+  border-color: rgba(0, 229, 204, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 229, 204, 0.08);
   transform: translateY(-2px);
 }
 
@@ -378,8 +379,8 @@ select option {
 .badge-info::before { background: var(--info); box-shadow: 0 0 8px var(--info); }
 
 /* Scan Types */
-.badge-network { background: rgba(99, 102, 241, 0.1); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.2); }
-.badge-network::before { background: #818cf8; }
+.badge-network { background: rgba(0, 229, 204, 0.08); color: #00e5cc; border: 1px solid rgba(0, 229, 204, 0.2); }
+.badge-network::before { background: #00e5cc; }
 
 .badge-web { background: rgba(168, 85, 247, 0.1); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.2); }
 .badge-web::before { background: #c084fc; }

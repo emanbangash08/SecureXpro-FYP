@@ -1,6 +1,6 @@
 export { AdminLayout } from './AdminLayout'
-export { Navbar } from './Navbar'
-export { Sidebar } from './Sidebar'
+export { default as Navbar } from './Navbar'
+export { default as Sidebar } from './Sidebar'
 export { SeverityBadge } from './SeverityBadge'
 export { ScanStatusBadge } from './ScanStatusBadge'
 export { RiskGauge } from './RiskGauge'
