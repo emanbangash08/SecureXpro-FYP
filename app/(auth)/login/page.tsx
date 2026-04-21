@@ -179,44 +179,22 @@ const THREAT_TICKERS = [
 
 export default function LoginPage() {
   const router = useRouter()
-  const [role, setRole] = useState<'admin' | 'agent'>('admin')
-  const [username, setUsername] = useState('')
+  
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPass, setShowPass] = useState(false)
+  const [role, setRole] = useState<'admin'|'agent'>('admin')
   const [tickerIdx, setTickerIdx] = useState(0)
   const [tickerVisible, setTickerVisible] = useState(true)
-  const { login } = useAuth()
-
-  const typedText = useTypingEffect([
-    'Scanning threat surface...',
-    'Analyzing CVE database...',
-    'Monitoring network perimeter...',
-  ], 55)
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTickerVisible(false)
-      setTimeout(() => {
-        setTickerIdx(i => (i + 1) % THREAT_TICKERS.length)
-        setTickerVisible(true)
-      }, 400)
-    }, 3500)
-    return () => clearInterval(interval)
-  }, [])
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    if (!username || !password) { setError('Authentication requires complete credentials.'); return }
+  
     setLoading(true)
     try {
-      await login(username, password, role)
-      if (role === 'admin') router.push('/dashboard')
-      else router.push('/agent-dashboard')
-    } catch (err: any) {
-      setError(err.message || 'Authentication sequence failed.')
+      const role = await login(email, password)
+      router.push(role === 'agent' ? '/agent-dashboard' : '/dashboard')
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Login failed. Check your credentials.')
       setLoading(false)
     }
   }
@@ -338,9 +316,9 @@ export default function LoginPage() {
                 </div>
                 <input
                   type="text"
-                  placeholder="Enter username"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
+                  placeholder="Enter email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
                   style={{
                     width: '100%', background: 'rgba(0,0,0,0.4)',
                     border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10,
@@ -381,6 +359,14 @@ export default function LoginPage() {
                   onMouseLeave={e => e.currentTarget.style.color = '#4a5568'}>
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
+              </div>
+              {/* Forgot password — BELOW password field */}
+              <div style={{ textAlign: 'right', marginTop: 8 }}>
+                <Link href="/forgot-password" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#00e5cc', textDecoration: 'none', opacity: 0.75, transition: 'opacity 0.2s' }}
+                  onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.opacity = '1')}
+                  onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.opacity = '0.75')}>
+                  Forgot Password?
+                </Link>
               </div>
             </div>
 

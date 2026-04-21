@@ -119,7 +119,14 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    overflow-y: auto;
+    height: auto;
+  }
   body {
     @apply bg-background text-foreground;
+    min-height: 100vh;
+    height: auto;
+    overflow-y: auto;
   }
 }
