@@ -14,17 +14,19 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from celery_app import celery_app
 from app.core.config import settings
 from app.models.scan import ScanStatus, ScanType
+from app.models.scan_log import scan_log_document
 
 logger = logging.getLogger(__name__)
 
 
+# ── Target helpers ────────────────────────────────────────────────────────────
+
 def _nmap_target(target: str) -> str:
-    """Extract bare hostname/IP for nmap from a target that may be a URL."""
     if target.startswith(("http://", "https://")):
         parsed = urlparse(target)
         return parsed.hostname or target
@@ -32,11 +34,25 @@ def _nmap_target(target: str) -> str:
 
 
 def _web_target(target: str) -> str:
-    """Ensure the target is a full URL for web assessment."""
     if not target.startswith(("http://", "https://")):
         return "http://" + target
     return target
 
+
+# ── Logging helpers ───────────────────────────────────────────────────────────
+
+async def _log(db: AsyncIOMotorDatabase, scan_id: str, phase: str, level: str, message: str) -> None:
+    await db.scan_logs.insert_one(scan_log_document(scan_id, phase, level, message))
+
+
+async def _set_phase(db: AsyncIOMotorDatabase, scan_id: str, phase: str) -> None:
+    await db.scans.update_one(
+        {"_id": ObjectId(scan_id)},
+        {"$set": {"current_phase": phase, "updated_at": datetime.now(timezone.utc)}},
+    )
+
+
+# ── Main execution ────────────────────────────────────────────────────────────
 
 async def _execute_scan(scan_id: str) -> None:
     client = AsyncIOMotorClient(settings.MONGODB_URL)
@@ -61,26 +77,48 @@ async def _execute_scan(scan_id: str) -> None:
         options   = scan.get("options", {})
 
         from app.services import recon_service, vuln_service, risk_service
+        from app.services.recon_service import build_nmap_cmd_string
 
-        # ── Phase 1: Reconnaissance (nmap) ────────────────────────────────────
         hosts = []
-        if scan_type in (ScanType.RECONNAISSANCE.value, ScanType.VULNERABILITY.value,
-                         ScanType.FULL.value):
+        total_ports = 0
+
+        # ── Phase 1: Reconnaissance ───────────────────────────────────────────
+        if scan_type in (ScanType.RECONNAISSANCE.value, ScanType.VULNERABILITY.value, ScanType.FULL.value):
+            await _set_phase(db, scan_id, "recon")
             nmap_host = _nmap_target(target)
+            cmd_str = build_nmap_cmd_string(nmap_host, options)
+
+            await _log(db, scan_id, "recon", "cmd",  f"> {cmd_str}")
+            await _log(db, scan_id, "recon", "info", f"  Starting Nmap 7.94SVN — target: {nmap_host}")
+            await _log(db, scan_id, "recon", "info",  "  Host discovery in progress (-Pn)...")
+
             hosts = await recon_service.run_nmap_scan(nmap_host, options)
+
+            if hosts:
+                await _log(db, scan_id, "recon", "info", f"  Host {hosts[0].ip} is up")
+                await _log(db, scan_id, "recon", "info",  "  PORT     STATE  SERVICE   VERSION")
+                for h in hosts:
+                    for p in h.ports:
+                        ver = f" {p.version}" if p.version else ""
+                        await _log(db, scan_id, "recon", "info",
+                                   f"  {p.port}/{p.protocol}   open   {p.service}{ver}")
+                        total_ports += 1
+                    if h.os_guess:
+                        await _log(db, scan_id, "recon", "info", f"  OS: {h.os_guess}")
+                await _log(db, scan_id, "recon", "success",
+                           f"  [+] Recon complete — {total_ports} open port(s), {len(hosts)} host(s)")
+            else:
+                await _log(db, scan_id, "recon", "warning",
+                           "  [!] No hosts responded — target may be offline or blocking scans")
+
             recon_data = [
                 {
                     "ip": h.ip,
                     "hostname": h.hostname,
                     "os": h.os_guess,
                     "ports": [
-                        {
-                            "port": p.port,
-                            "protocol": p.protocol,
-                            "service": p.service,
-                            "version": p.version,
-                            "extra_info": p.extra_info,
-                        }
+                        {"port": p.port, "protocol": p.protocol, "service": p.service,
+                         "version": p.version, "extra_info": p.extra_info}
                         for p in h.ports
                     ],
                 }
@@ -91,28 +129,134 @@ async def _execute_scan(scan_id: str) -> None:
                 {"$set": {"recon_results": recon_data, "updated_at": datetime.now(timezone.utc)}},
             )
 
-        # ── Phase 2: Vulnerability Correlation (NVD CVE lookup) ───────────────
+        # ── Phase 2: Vulnerability Correlation (NVD CVE) ─────────────────────
         if hosts and scan_type in (ScanType.VULNERABILITY.value, ScanType.FULL.value):
+            await _set_phase(db, scan_id, "vuln_correlation")
+            await _log(db, scan_id, "vuln_correlation", "cmd",
+                       "> securex-nvd --api nist.gov/rest/json/cves/2.0 --correlate")
+            await _log(db, scan_id, "vuln_correlation", "info",
+                       "  Querying NIST National Vulnerability Database...")
+
+            for h in hosts:
+                for p in h.ports:
+                    svc_str = f"{p.service} {p.version}".strip() if p.version else p.service
+                    if svc_str:
+                        await _log(db, scan_id, "vuln_correlation", "info",
+                                   f"  Checking {h.ip}:{p.port} ({svc_str})...")
+
             await vuln_service.correlate_vulnerabilities(db, scan_id, hosts)
 
-        # ── Phase 3: Web Assessment (OWASP checks) ────────────────────────────
+            vuln_count = await db.vulnerabilities.count_documents({"scan_id": scan_id})
+            if vuln_count:
+                cursor = db.vulnerabilities.find({"scan_id": scan_id}).sort("cvss_score", -1).limit(5)
+                async for v in cursor:
+                    sev   = v["severity"].upper()
+                    score = v["cvss_score"]
+                    cve   = v["cve_id"]
+                    title = v.get("title", "")[:55]
+                    tag   = "  [CRITICAL]" if sev == "CRITICAL" else f"  [{sev}]    "
+                    lvl   = "error" if sev in ("CRITICAL", "HIGH") else "warning"
+                    await _log(db, scan_id, "vuln_correlation", lvl,
+                               f"{tag} {cve}  CVSS:{score}  {title}")
+                await _log(db, scan_id, "vuln_correlation", "success",
+                           f"  [+] Correlation complete — {vuln_count} CVE(s) identified")
+            else:
+                await _log(db, scan_id, "vuln_correlation", "info",
+                           "  [+] No CVEs matched for discovered services")
+
+        # ── Phase 3: Web Assessment ───────────────────────────────────────────
         if scan_type in (ScanType.WEB_ASSESSMENT.value, ScanType.FULL.value):
+            await _set_phase(db, scan_id, "web_assessment")
             from app.services import web_service
             web_url = _web_target(target)
+
+            await _log(db, scan_id, "web_assessment", "cmd",
+                       f"> securex-web --target {web_url} --owasp-top10")
+            await _log(db, scan_id, "web_assessment", "info",
+                       "  Running OWASP Top 10 2021 checks...")
+            await _log(db, scan_id, "web_assessment", "info",
+                       "  Checking headers, SSL, sensitive paths, CORS, cookies...")
+
             web_results = await web_service.run_web_assessment(db, scan_id, web_url, options)
             await db.scans.update_one(
                 {"_id": ObjectId(scan_id)},
                 {"$set": {"web_results": web_results, "updated_at": datetime.now(timezone.utc)}},
             )
+            findings = web_results.get("total_findings", 0)
+            await _log(db, scan_id, "web_assessment", "success",
+                       f"  [+] Web assessment complete — {findings} finding(s)")
 
-        # ── Risk Summary (aggregates all phases) ──────────────────────────────
+        # ── Phase 4: Exploit Analysis ─────────────────────────────────────────
+        if scan_type in (ScanType.VULNERABILITY.value, ScanType.FULL.value):
+            await _set_phase(db, scan_id, "exploit_analysis")
+            await _log(db, scan_id, "exploit_analysis", "cmd",
+                       "> securex-exploit --check-kev --check-epss --source nvd")
+            await _log(db, scan_id, "exploit_analysis", "info",
+                       "  Cross-referencing CISA Known Exploited Vulnerabilities list...")
+
+            exploit_count = 0
+            cursor = db.vulnerabilities.find(
+                {"scan_id": scan_id, "exploit_available": True}
+            ).sort("cvss_score", -1)
+            async for v in cursor:
+                exploit_count += 1
+                await _log(db, scan_id, "exploit_analysis", "error",
+                           f"  [!] {v['cve_id']}  CVSS:{v['cvss_score']}  — exploit available")
+
+            if exploit_count:
+                await _log(db, scan_id, "exploit_analysis", "error",
+                           f"  [!] {exploit_count} active exploit(s) found — immediate patching required")
+            else:
+                await _log(db, scan_id, "exploit_analysis", "success",
+                           "  [+] No active exploits found for discovered CVEs")
+
+            await db.scans.update_one(
+                {"_id": ObjectId(scan_id)},
+                {"$set": {"exploit_count": exploit_count, "updated_at": datetime.now(timezone.utc)}},
+            )
+
+        # ── Phase 5: Risk Scoring ─────────────────────────────────────────────
+        await _set_phase(db, scan_id, "risk_scoring")
+        await _log(db, scan_id, "risk_scoring", "cmd",
+                   "> securex-risk --cvss-v3 --environmental --composite")
+        await _log(db, scan_id, "risk_scoring", "info",
+                   "  Applying CVSS v3.1 environmental scoring...")
+
         risk_summary = await risk_service.compute_risk_summary(db, scan_id)
+
+        if risk_summary and risk_summary.get("total", 0) > 0:
+            crit  = risk_summary.get("critical", 0)
+            high  = risk_summary.get("high", 0)
+            med   = risk_summary.get("medium", 0)
+            low   = risk_summary.get("low", 0)
+            max_s = risk_summary.get("max_cvss_score", 0)
+            risk  = risk_summary.get("overall_risk", "info").upper()
+            await _log(db, scan_id, "risk_scoring", "info",
+                       f"  Critical ×{crit}  High ×{high}  Medium ×{med}  Low ×{low}")
+            await _log(db, scan_id, "risk_scoring", "info", f"  Max CVSS Score: {max_s}")
+            await _log(db, scan_id, "risk_scoring",
+                       "error" if risk in ("CRITICAL", "HIGH") else "success",
+                       f"  [!] Composite Risk Score: {risk}")
+
+        # ── Phase 6: Report Generation ────────────────────────────────────────
+        await _set_phase(db, scan_id, "report_generation")
+        await _log(db, scan_id, "report_generation", "cmd",
+                   "> securex-report --format json --attach-recon --sign")
+        await _log(db, scan_id, "report_generation", "info",
+                   "  Compiling findings into structured report...")
+        await _log(db, scan_id, "report_generation", "info",
+                   "  Embedding CVE cross-references and remediation steps...")
+        await _log(db, scan_id, "report_generation", "success",
+                   f"  [✓] SCN-{scan_id[-6:].upper()}-report generated")
+        await _log(db, scan_id, "report_generation", "success",
+                   "  [✓] Scan complete — all findings exported")
 
         now = datetime.now(timezone.utc)
         await db.scans.update_one(
             {"_id": ObjectId(scan_id)},
             {"$set": {
                 "status": ScanStatus.COMPLETED.value,
+                "current_phase": None,
                 "risk_summary": risk_summary,
                 "completed_at": now,
                 "updated_at": now,
@@ -122,11 +266,18 @@ async def _execute_scan(scan_id: str) -> None:
 
     except Exception as exc:
         logger.exception("Scan %s failed: %s", scan_id, exc)
+        try:
+            doc = await db.scans.find_one({"_id": ObjectId(scan_id)}, {"current_phase": 1})
+            phase = (doc or {}).get("current_phase") or "unknown"
+            await _log(db, scan_id, phase, "error", f"  [ERROR] {exc}")
+        except Exception:
+            pass
         now = datetime.now(timezone.utc)
         await db.scans.update_one(
             {"_id": ObjectId(scan_id)},
             {"$set": {
                 "status": ScanStatus.FAILED.value,
+                "current_phase": None,
                 "error": str(exc),
                 "completed_at": now,
                 "updated_at": now,

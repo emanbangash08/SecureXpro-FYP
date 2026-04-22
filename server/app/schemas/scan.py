@@ -9,6 +9,9 @@ class ScanOptions(BaseModel):
     os_detection: bool = False
     aggressive: bool = False
     udp: bool = False
+    nse_scripts: bool = False
+    traceroute: bool = False
+    intensity: str = "T4"           # T3 | T4 | T5
     # Web assessment options
     check_sensitive_paths: bool = True
     check_ssl: bool = True
@@ -35,10 +38,12 @@ class ScanOut(BaseModel):
     status: ScanStatus
     options: dict
     task_id: str | None = None
+    current_phase: str | None = None
     recon_results: list | None = None
     vuln_results: dict | None = None
     web_results: dict | None = None
     risk_summary: dict | None = None
+    exploit_count: int = 0
     error: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None

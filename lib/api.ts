@@ -72,6 +72,14 @@ export const api = {
 
     delete: (scanId: string) =>
       request<void>(`/api/v1/scans/${scanId}`, { method: 'DELETE' }),
+
+    getLogs: (scanId: string, skip = 0) =>
+      request<{ scan_id: string; count: number; logs: import('./types').ScanLog[] }>(
+        `/api/v1/scans/${scanId}/logs?skip=${skip}`
+      ),
+
+    getReport: (scanId: string) =>
+      request<import('./types').ScanReport>(`/api/v1/scans/${scanId}/report`),
   },
 
   vulnerabilities: {

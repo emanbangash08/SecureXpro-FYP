@@ -44,17 +44,33 @@ async def run_nmap_scan(target: str, options: dict) -> list[HostResult]:
 
 
 def _build_nmap_flags(options: dict) -> list[str]:
-    # -Pn: skip ping host discovery — many hosts block ICMP so nmap wrongly marks them down
-    flags = ["-Pn", "-sV", "--version-intensity", "5"]
+    # -Pn: skip ping — many hosts block ICMP so nmap marks them as down
+    intensity = options.get("intensity", "T4")
+    if intensity not in ("T3", "T4", "T5"):
+        intensity = "T4"
+
+    flags = ["-Pn", "-sV", "--version-intensity", "5", f"-{intensity}"]
+
     if options.get("os_detection"):
         flags.append("-O")
     if options.get("aggressive"):
         flags.append("-A")
+    if options.get("nse_scripts"):
+        flags.append("-sC")
+    if options.get("traceroute"):
+        flags.append("--traceroute")
     if options.get("udp"):
         flags += ["-sU", "-sS"]
+
     port_range = options.get("port_range", "1-1000")
     flags += ["-p", port_range]
     return flags
+
+
+def build_nmap_cmd_string(target: str, options: dict) -> str:
+    """Return a human-readable nmap command for terminal display."""
+    flags = _build_nmap_flags(options)
+    return f"nmap {' '.join(flags)} {target}"
 
 
 def _parse_nmap_xml(xml_data: str) -> list[HostResult]:

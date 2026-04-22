@@ -8,6 +8,11 @@ export interface ApiScanOptions {
   os_detection: boolean
   aggressive: boolean
   udp: boolean
+  nse_scripts: boolean
+  traceroute: boolean
+  intensity: string
+  check_sensitive_paths: boolean
+  check_ssl: boolean
 }
 
 export interface RiskSummary {
@@ -36,10 +41,12 @@ export interface ApiScan {
   status: ApiScanStatus
   options: Partial<ApiScanOptions>
   task_id: string | null
+  current_phase: string | null
   recon_results: ReconHost[] | null
   vuln_results: Record<string, unknown> | null
   web_results: Record<string, unknown> | null
   risk_summary: RiskSummary | null
+  exploit_count: number
   error: string | null
   started_at: string | null
   completed_at: string | null
@@ -55,6 +62,47 @@ export interface ScanCreatePayload {
   target: string
   scan_type: ApiScanType
   options: Partial<ApiScanOptions>
+}
+
+export interface ScanLog {
+  id: string
+  phase: string
+  level: 'cmd' | 'info' | 'success' | 'error' | 'warning'
+  message: string
+  created_at: string
+}
+
+export interface ScanReport {
+  scan_id: string
+  target: string
+  scan_type: string
+  status: string
+  started_at: string | null
+  completed_at: string | null
+  summary: {
+    hosts_discovered: number
+    open_ports: number
+    total_vulns: number
+    critical: number
+    high: number
+    medium: number
+    low: number
+    exploit_count: number
+    max_cvss_score: number
+    overall_risk: string
+  }
+  hosts: ReconHost[]
+  vulnerabilities: Array<{
+    cve_id: string
+    title: string
+    severity: string
+    cvss_score: number
+    affected_host: string
+    affected_port: number | null
+    remediation: string
+    owasp: string | null
+  }>
+  web_results: Record<string, unknown>
 }
 
 // ── User and Auth Types ────────────────────────────────────────────────────

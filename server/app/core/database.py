@@ -33,6 +33,8 @@ async def create_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.vulnerabilities.create_index("scan_id")
     await db.vulnerabilities.create_index("cve_id")
     await db.vulnerabilities.create_index([("severity", 1), ("scan_id", 1)])
+    await db.scan_logs.create_index("scan_id")
+    await db.scan_logs.create_index([("scan_id", 1), ("created_at", 1)])
     await db.exploits.create_index("vulnerability_id")
     await db.reports.create_index("scan_id")
     await db.reports.create_index("user_id")

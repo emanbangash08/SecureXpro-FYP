@@ -319,8 +319,14 @@ export default function ScansPage() {
                         </button>
                       )}
                       {/* View */}
-                      {scan.status === 'completed' && (
-                        <Link href={`/scans/${scan.scan_type}/${scan.id}`}>
+                      {(scan.scan_type === 'vulnerability'
+                        ? scan.status !== 'cancelled'
+                        : scan.status === 'completed') && (
+                        <Link href={
+                          scan.scan_type === 'vulnerability'
+                            ? `/scans/network?scanId=${scan.id}`
+                            : `/scans/${scan.scan_type}/${scan.id}`
+                        }>
                           <button style={{ padding: '5px 9px', borderRadius: 6, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', color: '#e8edf5', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
                             <ExternalLink size={12} /> View
                           </button>

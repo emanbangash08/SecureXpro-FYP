@@ -9,22 +9,24 @@ import {
   Server, FileText, Settings, Activity, Shield, LogOut,
   Zap, ChevronRight,
 } from 'lucide-react'
+import { useScanContext } from '@/lib/scan-context'
+import { api } from '@/lib/api'
 
 const adminNav = [
-  { label: 'Dashboard',       href: '/dashboard',       icon: LayoutDashboard, badge: null },
-  { label: 'Network Scans',   href: '/scans/network',   icon: Network,          badge: null },
-  { label: 'Web Scans',       href: '/scans/web',       icon: Globe,            badge: null },
-  { label: 'All Scans',       href: '/scans',           icon: Activity,         badge: '6'  },
-  { label: 'Vulnerabilities', href: '/vulnerabilities', icon: AlertTriangle,    badge: '12' },
-  { label: 'Agents',          href: '/agents',          icon: Server,           badge: null },
-  { label: 'Reports',         href: '/reports',         icon: FileText,         badge: null },
-  { label: 'Settings',        href: '/settings',        icon: Settings,         badge: null },
+  { label: 'Dashboard',       href: '/dashboard',       icon: LayoutDashboard },
+  { label: 'Network Scans',   href: '/scans/network',   icon: Network         },
+  { label: 'Web Scans',       href: '/scans/web',       icon: Globe           },
+  { label: 'All Scans',       href: '/scans',           icon: Activity        },
+  { label: 'Vulnerabilities', href: '/vulnerabilities', icon: AlertTriangle   },
+  { label: 'Agents',          href: '/agents',          icon: Server          },
+  { label: 'Reports',         href: '/reports',         icon: FileText        },
+  { label: 'Settings',        href: '/settings',        icon: Settings        },
 ]
 
 const agentNav = [
-  { label: 'Dashboard', href: '/agent-dashboard', icon: LayoutDashboard, badge: null },
-  { label: 'My Scans',  href: '/agent-scans',     icon: Activity,         badge: '3'  },
-  { label: 'Reports',   href: '/agent-reports',   icon: FileText,         badge: null },
+  { label: 'Dashboard', href: '/agent-dashboard', icon: LayoutDashboard },
+  { label: 'My Scans',  href: '/agent-scans',     icon: Activity        },
+  { label: 'Reports',   href: '/agent-reports',   icon: FileText        },
 ]
 
 function LiveClock() {
@@ -43,6 +45,16 @@ export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'agent' }
   const router = useRouter()
   const { logout } = useAuth()
   const nav = role === 'admin' ? adminNav : agentNav
+  const scanCtx = useScanContext()
+  const isScanning = scanCtx?.isScanning ?? false
+  const [scanTotal, setScanTotal] = useState<number | null>(null)
+
+  // Fetch real scan count; refresh whenever a scan completes (recentScans changes)
+  useEffect(() => {
+    api.scans.list({ limit: 1 })
+      .then(r => setScanTotal(r.total))
+      .catch(() => {})
+  }, [scanCtx?.recentScans])
 
   return (
     <aside style={{
@@ -100,42 +112,65 @@ export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'agent' }
 
       {/* Nav Items */}
       <nav style={{ flex: 1, padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto' }}>
-        {nav.map(({ label, href, icon: Icon, badge }) => {
+        {nav.map(({ label, href, icon: Icon }) => {
           const active = href === '/scans' ? pathname === href : (pathname === href || pathname.startsWith(href + '/'))
-          const isAlert = badge && (label === 'Vulnerabilities')
+          const scanning = isScanning && href === '/scans/network'
+          // Live badge: only "All Scans" gets a real count
+          const badge = href === '/scans' && scanTotal != null ? String(scanTotal) : null
+          const isAlert = false
           return (
             <Link key={href} href={href} style={{ textDecoration: 'none' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '9px 10px', borderRadius: 9,
-                background: active ? 'rgba(0,229,204,0.08)' : 'transparent',
-                border: `1px solid ${active ? 'rgba(0,229,204,0.18)' : 'transparent'}`,
-                color: active ? '#00e5cc' : '#6a7b8a',
-                fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: active ? 600 : 400,
+                background: scanning
+                  ? 'rgba(0,229,204,0.07)'
+                  : active ? 'rgba(0,229,204,0.08)' : 'transparent',
+                border: `1px solid ${scanning ? 'rgba(0,229,204,0.35)' : active ? 'rgba(0,229,204,0.18)' : 'transparent'}`,
+                color: scanning || active ? '#00e5cc' : '#6a7b8a',
+                fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: active || scanning ? 600 : 400,
                 transition: 'all .18s ease',
                 cursor: 'pointer',
                 position: 'relative',
+                boxShadow: scanning ? '0 0 12px rgba(0,229,204,0.15), inset 0 0 12px rgba(0,229,204,0.04)' : 'none',
+                animation: scanning ? 'scan-glow 2s ease-in-out infinite' : 'none',
               }}
                 onMouseEnter={e => {
-                  if (!active) {
+                  if (!active && !scanning) {
                     (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.04)'
                     ;(e.currentTarget as HTMLDivElement).style.color = '#c8d3e0'
                   }
                 }}
                 onMouseLeave={e => {
-                  if (!active) {
+                  if (!active && !scanning) {
                     (e.currentTarget as HTMLDivElement).style.background = 'transparent'
                     ;(e.currentTarget as HTMLDivElement).style.color = '#6a7b8a'
                   }
                 }}
               >
-                {/* Active bar */}
-                {active && (
-                  <div style={{ position: 'absolute', left: -10, top: '50%', transform: 'translateY(-50%)', width: 3, height: 16, background: '#00e5cc', borderRadius: '0 2px 2px 0', boxShadow: '0 0 8px rgba(0,229,204,0.6)' }} />
+                {/* Active / scanning bar */}
+                {(active || scanning) && (
+                  <div style={{
+                    position: 'absolute', left: -10, top: '50%', transform: 'translateY(-50%)',
+                    width: 3, height: scanning ? 20 : 16,
+                    background: '#00e5cc', borderRadius: '0 2px 2px 0',
+                    boxShadow: scanning ? '0 0 12px rgba(0,229,204,0.9)' : '0 0 8px rgba(0,229,204,0.6)',
+                    animation: scanning ? 'bar-pulse 1s ease-in-out infinite' : 'none',
+                  }} />
                 )}
                 <Icon size={15} style={{ flexShrink: 0 }} />
                 <span style={{ flex: 1 }}>{label}</span>
-                {badge && (
+                {/* Scanning pulse badge */}
+                {scanning && (
+                  <span style={{
+                    fontSize: 8, fontFamily: 'var(--font-mono)', padding: '2px 6px', borderRadius: 10,
+                    background: 'rgba(0,229,204,0.15)', color: '#00e5cc',
+                    border: '1px solid rgba(0,229,204,0.4)',
+                    fontWeight: 700, letterSpacing: '0.5px',
+                    animation: 'blink-badge 1s step-end infinite',
+                  }}>LIVE</span>
+                )}
+                {!scanning && badge && (
                   <span style={{
                     fontSize: 9, fontFamily: 'var(--font-mono)',
                     padding: '2px 6px', borderRadius: 10,
@@ -145,7 +180,7 @@ export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'agent' }
                     fontWeight: 700,
                   }}>{badge}</span>
                 )}
-                {active && <ChevronRight size={12} style={{ flexShrink: 0, opacity: 0.5 }} />}
+                {active && !scanning && <ChevronRight size={12} style={{ flexShrink: 0, opacity: 0.5 }} />}
               </div>
             </Link>
           )
@@ -209,7 +244,12 @@ export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'agent' }
         </button>
       </div>
 
-      <style>{`@keyframes pulse-soft { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
+      <style>{`
+        @keyframes pulse-soft { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes scan-glow { 0%,100%{box-shadow:0 0 10px rgba(0,229,204,0.12),inset 0 0 8px rgba(0,229,204,0.03)} 50%{box-shadow:0 0 20px rgba(0,229,204,0.25),inset 0 0 16px rgba(0,229,204,0.07)} }
+        @keyframes bar-pulse { 0%,100%{box-shadow:0 0 8px rgba(0,229,204,0.7)} 50%{box-shadow:0 0 16px rgba(0,229,204,1)} }
+        @keyframes blink-badge { 0%,100%{opacity:1} 50%{opacity:0.3} }
+      `}</style>
     </aside>
   )
 }
