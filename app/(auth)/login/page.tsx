@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Shield, KeyRound, User, Eye, EyeOff, Loader2, ShieldAlert, Cpu, ChevronRight } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 
@@ -188,7 +189,31 @@ export default function LoginPage() {
   const [role, setRole] = useState<'admin'|'agent'>('admin')
   const [tickerIdx, setTickerIdx] = useState(0)
   const [tickerVisible, setTickerVisible] = useState(true)
-  
+
+  const typedText = useTypingEffect([
+    'Scanning network topology...',
+    'Correlating CVE database...',
+    'Running OWASP checks...',
+    'Analyzing attack surface...',
+    'Generating risk report...',
+  ])
+
+  useEffect(() => {
+    const cycle = setInterval(() => {
+      setTickerVisible(false)
+      setTimeout(() => {
+        setTickerIdx(i => (i + 1) % THREAT_TICKERS.length)
+        setTickerVisible(true)
+      }, 400)
+    }, 3500)
+    return () => clearInterval(cycle)
+  }, [])
+
+  const { login } = useAuth()
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
     setLoading(true)
     try {
       const role = await login(email, password)
@@ -306,13 +331,13 @@ export default function LoginPage() {
             })}
           </div>
 
-          <form onSubmit={handleLogin}>
+          <form onSubmit={handleSubmit}>
             {/* Username */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1.5px', display: 'block', marginBottom: 8 }}>Network Identifier</label>
               <div style={{ position: 'relative' }}>
                 <div style={{ position: 'absolute', left: 14, top: 0, bottom: 0, display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
-                  <User size={16} color={username ? '#00e5cc' : '#4a5568'} style={{ transition: 'color 0.2s' }} />
+                  <User size={16} color={email ? '#00e5cc' : '#4a5568'} style={{ transition: 'color 0.2s' }} />
                 </div>
                 <input
                   type="text"
