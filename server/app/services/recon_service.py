@@ -44,7 +44,8 @@ async def run_nmap_scan(target: str, options: dict) -> list[HostResult]:
 
 
 def _build_nmap_flags(options: dict) -> list[str]:
-    flags = ["-sV", "--version-intensity", "5"]
+    # -Pn: skip ping host discovery — many hosts block ICMP so nmap wrongly marks them down
+    flags = ["-Pn", "-sV", "--version-intensity", "5"]
     if options.get("os_detection"):
         flags.append("-O")
     if options.get("aggressive"):

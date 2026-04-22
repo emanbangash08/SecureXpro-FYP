@@ -1,4 +1,63 @@
-// User and Auth Types
+// ── API Types (match the FastAPI backend exactly) ──────────────────────────
+
+export type ApiScanType = 'reconnaissance' | 'vulnerability' | 'web_assessment' | 'full'
+export type ApiScanStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface ApiScanOptions {
+  port_range: string
+  os_detection: boolean
+  aggressive: boolean
+  udp: boolean
+}
+
+export interface RiskSummary {
+  total: number
+  critical: number
+  high: number
+  medium: number
+  low: number
+  info: number
+  max_cvss_score: number
+  overall_risk: 'critical' | 'high' | 'medium' | 'low' | 'info'
+}
+
+export interface ReconHost {
+  ip: string
+  hostname: string
+  os: string
+  ports: Array<{ port: number; protocol: string; service: string; version: string }>
+}
+
+export interface ApiScan {
+  id: string
+  user_id: string
+  target: string
+  scan_type: ApiScanType
+  status: ApiScanStatus
+  options: Partial<ApiScanOptions>
+  task_id: string | null
+  recon_results: ReconHost[] | null
+  vuln_results: Record<string, unknown> | null
+  web_results: Record<string, unknown> | null
+  risk_summary: RiskSummary | null
+  error: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export interface ApiScanListOut {
+  total: number
+  items: ApiScan[]
+}
+
+export interface ScanCreatePayload {
+  target: string
+  scan_type: ApiScanType
+  options: Partial<ApiScanOptions>
+}
+
+// ── User and Auth Types ────────────────────────────────────────────────────
 export type UserRole = 'admin' | 'agent'
 
 export interface User {

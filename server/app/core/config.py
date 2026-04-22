@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:3001"]
 
+    REDIS_URL: str = "redis://localhost:6379/0"
+    MAX_CONCURRENT_SCANS_PER_USER: int = 3
+
     NVD_API_KEY: str = ""
     NVD_API_BASE_URL: str = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 

@@ -1,11 +1,39 @@
 """
 Vulnerability Correlation Service — maps recon results to CVEs via NVD API.
 """
+import logging
 import httpx
+
 from app.core.config import settings
 from app.services.recon_service import HostResult
 from app.models.vulnerability import vulnerability_document, Severity
 from motor.motor_asyncio import AsyncIOMotorDatabase
+
+logger = logging.getLogger(__name__)
+
+# Map nmap service names → better NVD search keywords
+_SERVICE_KEYWORD_MAP: dict[str, str] = {
+    "msrpc":           "Microsoft Windows RPC remote code execution",
+    "microsoft-ds":    "Windows SMB Server Message Block",
+    "netbios-ssn":     "NetBIOS Windows SMB",
+    "http":            "Apache HTTP Server",
+    "https":           "OpenSSL TLS",
+    "ssh":             "OpenSSH",
+    "ftp":             "FTP server",
+    "smtp":            "SMTP mail server",
+    "dns":             "BIND DNS",
+    "mysql":           "MySQL database",
+    "mssql":           "Microsoft SQL Server",
+    "postgresql":      "PostgreSQL",
+    "rdp":             "Windows Remote Desktop Protocol",
+    "vnc":             "VNC remote desktop",
+    "telnet":          "telnet service",
+    "snmp":            "SNMP service",
+    "ldap":            "LDAP server",
+    "mongodb":         "MongoDB database",
+    "redis":           "Redis server",
+    "elasticsearch":   "Elasticsearch",
+}
 
 
 async def correlate_vulnerabilities(
@@ -18,9 +46,11 @@ async def correlate_vulnerabilities(
     async with httpx.AsyncClient(timeout=30) as client:
         for host in hosts:
             for port in host.ports:
-                if not port.service or not port.version:
+                if not port.service:
                     continue
+
                 cves = await _fetch_cves(client, port.service, port.version)
+
                 for cve in cves:
                     severity = _map_severity(cve.get("cvss_score", 0.0))
                     doc = vulnerability_document(
@@ -44,7 +74,14 @@ async def correlate_vulnerabilities(
 
 
 async def _fetch_cves(client: httpx.AsyncClient, service: str, version: str) -> list[dict]:
-    keyword = f"{service} {version}"
+    # Use mapped keyword if available, otherwise compose from service + version
+    if service in _SERVICE_KEYWORD_MAP:
+        keyword = _SERVICE_KEYWORD_MAP[service]
+        if version:
+            keyword = f"{keyword} {version}"
+    else:
+        keyword = f"{service} {version}".strip() if version else service
+
     params = {"keywordSearch": keyword, "resultsPerPage": 5}
     headers = {}
     if settings.NVD_API_KEY:
@@ -54,7 +91,11 @@ async def _fetch_cves(client: httpx.AsyncClient, service: str, version: str) -> 
         resp = await client.get(settings.NVD_API_BASE_URL, params=params, headers=headers)
         resp.raise_for_status()
         data = resp.json()
-    except Exception:
+    except httpx.HTTPStatusError as e:
+        logger.warning("NVD API HTTP error for %r: %s", keyword, e)
+        return []
+    except Exception as e:
+        logger.warning("NVD API request failed for %r: %s", keyword, e)
         return []
 
     results = []

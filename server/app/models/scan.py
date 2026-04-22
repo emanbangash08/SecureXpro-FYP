@@ -30,6 +30,7 @@ def scan_document(
         "scan_type": scan_type.value,
         "status": ScanStatus.PENDING.value,
         "options": options or {},
+        "task_id": None,
         "recon_results": None,
         "vuln_results": None,
         "web_results": None,

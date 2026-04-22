@@ -46,7 +46,52 @@ export interface LoginResponse {
   }
 }
 
+import type { ApiScan, ApiScanListOut, ScanCreatePayload, ApiScanType, ApiScanStatus } from './types'
+
 export const api = {
+  scans: {
+    create: (payload: ScanCreatePayload) =>
+      request<ApiScan>('/api/v1/scans/', { method: 'POST', body: JSON.stringify(payload) }),
+
+    list: (params?: { skip?: number; limit?: number; scan_type?: ApiScanType; scan_status?: ApiScanStatus }) => {
+      const qs = new URLSearchParams()
+      if (params?.skip != null) qs.set('skip', String(params.skip))
+      if (params?.limit != null) qs.set('limit', String(params.limit))
+      if (params?.scan_type) qs.set('scan_type', params.scan_type)
+      if (params?.scan_status) qs.set('scan_status', params.scan_status)
+      return request<ApiScanListOut>(`/api/v1/scans/?${qs.toString()}`)
+    },
+
+    get: (scanId: string) => request<ApiScan>(`/api/v1/scans/${scanId}`),
+
+    cancel: (scanId: string) =>
+      request<ApiScan>(`/api/v1/scans/${scanId}/cancel`, { method: 'POST' }),
+
+    retry: (scanId: string) =>
+      request<ApiScan>(`/api/v1/scans/${scanId}/retry`, { method: 'POST' }),
+
+    delete: (scanId: string) =>
+      request<void>(`/api/v1/scans/${scanId}`, { method: 'DELETE' }),
+  },
+
+  vulnerabilities: {
+    getByScan: (scanId: string, params?: { severity?: string; skip?: number; limit?: number }) => {
+      const qs = new URLSearchParams()
+      if (params?.severity) qs.set('severity', params.severity)
+      if (params?.skip != null) qs.set('skip', String(params.skip))
+      if (params?.limit != null) qs.set('limit', String(params.limit))
+      return request<{
+        total: number; critical: number; high: number; medium: number; low: number
+        items: Array<{
+          id: string; scan_id: string; cve_id: string; title: string; description: string
+          severity: string; cvss_score: number; affected_host: string; affected_service: string
+          affected_port: number | null; exploit_available: boolean; remediation: string
+          references: string[]; created_at: string
+        }>
+      }>(`/api/v1/vulnerabilities/scan/${scanId}?${qs.toString()}`)
+    },
+  },
+
   auth: {
     register: (data: RegisterPayload) =>
       request<{ id: string }>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify(data) }),

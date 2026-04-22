@@ -3,10 +3,21 @@ from datetime import datetime
 from app.models.scan import ScanStatus, ScanType
 
 
+class ScanOptions(BaseModel):
+    # Network scan options
+    port_range: str = "1-1000"
+    os_detection: bool = False
+    aggressive: bool = False
+    udp: bool = False
+    # Web assessment options
+    check_sensitive_paths: bool = True
+    check_ssl: bool = True
+
+
 class ScanCreate(BaseModel):
     target: str
     scan_type: ScanType
-    options: dict = {}
+    options: ScanOptions = ScanOptions()
 
     @field_validator("target")
     @classmethod
@@ -23,6 +34,10 @@ class ScanOut(BaseModel):
     scan_type: ScanType
     status: ScanStatus
     options: dict
+    task_id: str | None = None
+    recon_results: list | None = None
+    vuln_results: dict | None = None
+    web_results: dict | None = None
     risk_summary: dict | None = None
     error: str | None = None
     started_at: datetime | None = None
