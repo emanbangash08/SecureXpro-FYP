@@ -10,6 +10,7 @@ import {
   Zap, ChevronRight,
 } from 'lucide-react'
 import { useScanContext } from '@/lib/scan-context'
+import { useWebScanContext } from '@/lib/web-scan-context'
 import { api } from '@/lib/api'
 
 const adminNav = [
@@ -46,7 +47,9 @@ export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'agent' }
   const { logout } = useAuth()
   const nav = role === 'admin' ? adminNav : agentNav
   const scanCtx = useScanContext()
+  const webCtx = useWebScanContext()
   const isScanning = scanCtx?.isScanning ?? false
+  const isWebScanning = webCtx?.isScanning ?? false
   const [scanTotal, setScanTotal] = useState<number | null>(null)
 
   // Fetch real scan count; refresh whenever a scan completes (recentScans changes)
@@ -114,7 +117,7 @@ export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'agent' }
       <nav style={{ flex: 1, padding: '4px 10px', display: 'flex', flexDirection: 'column', gap: 1, overflowY: 'auto' }}>
         {nav.map(({ label, href, icon: Icon }) => {
           const active = href === '/scans' ? pathname === href : (pathname === href || pathname.startsWith(href + '/'))
-          const scanning = isScanning && href === '/scans/network'
+          const scanning = (isScanning && href === '/scans/network') || (isWebScanning && href === '/scans/web')
           // Live badge: only "All Scans" gets a real count
           const badge = href === '/scans' && scanTotal != null ? String(scanTotal) : null
           const isAlert = false

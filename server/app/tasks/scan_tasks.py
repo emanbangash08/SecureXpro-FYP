@@ -164,27 +164,97 @@ async def _execute_scan(scan_id: str) -> None:
                 await _log(db, scan_id, "vuln_correlation", "info",
                            "  [+] No CVEs matched for discovered services")
 
-        # ── Phase 3: Web Assessment ───────────────────────────────────────────
+        # ── Phase 3: Web Assessment (sub-phases) ─────────────────────────────
         if scan_type in (ScanType.WEB_ASSESSMENT.value, ScanType.FULL.value):
-            await _set_phase(db, scan_id, "web_assessment")
             from app.services import web_service
             web_url = _web_target(target)
+            _parsed = urlparse(web_url)
+            _host = _parsed.hostname or web_url
+            _port = _parsed.port or (443 if _parsed.scheme == "https" else 80)
+            _scheme = _parsed.scheme
+            _all_web: list = []
 
-            await _log(db, scan_id, "web_assessment", "cmd",
-                       f"> securex-web --target {web_url} --owasp-top10")
-            await _log(db, scan_id, "web_assessment", "info",
-                       "  Running OWASP Top 10 2021 checks...")
-            await _log(db, scan_id, "web_assessment", "info",
-                       "  Checking headers, SSL, sensitive paths, CORS, cookies...")
+            # Sub-phase: web_init — connect to target
+            await _set_phase(db, scan_id, "web_init")
+            await _log(db, scan_id, "web_init", "cmd", f"> curl -ILk {web_url}")
+            await _log(db, scan_id, "web_init", "info", f"  Establishing connection to {web_url} ...")
+            try:
+                _client, _resp = await web_service.connect_to_target(web_url)
+            except Exception as _conn_exc:
+                await _log(db, scan_id, "web_init", "error",
+                           f"  [ERROR] Cannot connect to {web_url}: {_conn_exc}")
+                raise
+            await _log(db, scan_id, "web_init", "success",
+                       f"  [+] HTTP {_resp.status_code} | Server: {_resp.headers.get('server', '?')} | {len(_resp.content)} bytes")
 
-            web_results = await web_service.run_web_assessment(db, scan_id, web_url, options)
+            # Sub-phase: web_headers — security headers, SSL, CORS, cookies
+            await _set_phase(db, scan_id, "web_headers")
+            await _log(db, scan_id, "web_headers", "cmd",
+                       "> securex-web --check-headers --check-ssl --check-cors --check-cookies")
+            await _log(db, scan_id, "web_headers", "info", "  Auditing HTTP security headers...")
+
+            for _check_fn, _label in [
+                (lambda: web_service.check_headers_and_disclosure(_resp, web_url), "headers"),
+                (lambda: web_service.check_ssl_or_https(_parsed, _resp, web_url), "ssl"),
+                (lambda: web_service.check_cors(_resp, web_url), "cors"),
+                (lambda: web_service.check_cookies(_resp, web_url), "cookies"),
+            ]:
+                try:
+                    _fnd = _check_fn()
+                    _all_web += _fnd
+                    for _f in _fnd[:2]:
+                        _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                        await _log(db, scan_id, "web_headers", _lvl,
+                                   f"  [{_f.severity.value.upper()}] {_f.title}")
+                except Exception as exc:
+                    await _log(db, scan_id, "web_headers", "warning",
+                               f"  [!] {_label} check error: {exc}")
+
+            await _log(db, scan_id, "web_headers", "success",
+                       f"  [+] Header audit complete — {len(_all_web)} finding(s) so far")
+
+            # Sub-phase: web_active — path probing and HTTP methods
+            await _set_phase(db, scan_id, "web_active")
+            await _log(db, scan_id, "web_active", "cmd",
+                       f"> securex-web --probe-paths {web_service.SENSITIVE_PATH_COUNT} --check-methods")
+            await _log(db, scan_id, "web_active", "info",
+                       f"  Probing {web_service.SENSITIVE_PATH_COUNT} sensitive paths...")
+
+            try:
+                _path_fnd = await web_service.check_sensitive_paths(_client, web_url)
+                _all_web += _path_fnd
+                for _f in _path_fnd[:5]:
+                    _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                    await _log(db, scan_id, "web_active", _lvl,
+                               f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                if _path_fnd:
+                    await _log(db, scan_id, "web_active", "info",
+                               f"  {len(_path_fnd)} exposed path(s) found")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] Path probe error: {exc}")
+
+            try:
+                _meth_fnd = await web_service.check_http_methods(_client, web_url)
+                _all_web += _meth_fnd
+                for _f in _meth_fnd:
+                    await _log(db, scan_id, "web_active", "warning",
+                               f"  [{_f.severity.value.upper()}] {_f.title}")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] Method check error: {exc}")
+
+            try:
+                await _client.aclose()
+            except Exception:
+                pass
+
+            await web_service.persist_findings(db, scan_id, _all_web, _host, _port, _scheme)
+            _web_results = web_service.make_summary(_resp, web_url, _all_web)
             await db.scans.update_one(
                 {"_id": ObjectId(scan_id)},
-                {"$set": {"web_results": web_results, "updated_at": datetime.now(timezone.utc)}},
+                {"$set": {"web_results": _web_results, "updated_at": datetime.now(timezone.utc)}},
             )
-            findings = web_results.get("total_findings", 0)
-            await _log(db, scan_id, "web_assessment", "success",
-                       f"  [+] Web assessment complete — {findings} finding(s)")
+            await _log(db, scan_id, "web_active", "success",
+                       f"  [+] Active probing complete — {len(_all_web)} total finding(s)")
 
         # ── Phase 4: Exploit Analysis ─────────────────────────────────────────
         if scan_type in (ScanType.VULNERABILITY.value, ScanType.FULL.value):
