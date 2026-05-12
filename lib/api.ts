@@ -46,6 +46,116 @@ export interface LoginResponse {
   }
 }
 
+export interface AdminUser {
+  id: string
+  username: string
+  email: string
+  full_name: string
+  role: 'admin' | 'agent'
+  status: 'active' | 'inactive' | 'banned'
+  created_at: string
+  last_login: string | null
+}
+
+export interface ScanDefaults {
+  intensity: string
+  thread_count: number
+  timeout: number
+}
+
+export interface PlatformSettings {
+  organization_name: string
+  admin_email: string
+  timezone: string
+  email_notifications: boolean
+  notify_critical: boolean
+  notify_scan_complete: boolean
+  notify_agent_status: boolean
+  scan_defaults: ScanDefaults
+  updated_at: string | null
+}
+
+export interface ApiReport {
+  id: string
+  scan_id: string
+  user_id: string
+  title: string
+  format: 'pdf' | 'html' | 'json'
+  file_path: string
+  generated: boolean
+  created_at: string
+}
+
+export interface ReportContent {
+  report_id: string
+  title: string
+  format: string
+  generated_at: string
+  scan: {
+    id: string
+    target: string
+    scan_type: string
+    status: string
+    started_at: string | null
+    completed_at: string | null
+  }
+  risk_summary: {
+    overall: string
+    critical: number
+    high: number
+    medium: number
+    low: number
+    info: number
+    max_cvss: number
+  }
+  vulnerability_count: number
+  vulnerabilities: Array<{
+    id: string
+    cve_id: string
+    title: string
+    description: string
+    severity: string
+    cvss_score: number
+    affected_host: string
+    affected_service: string
+    affected_port: number | null
+    exploit_available: boolean
+    remediation: string
+    owasp: string | null
+    evidence: string | null
+    affected_url: string | null
+  }>
+}
+
+export interface DashboardStats {
+  scans: { total: number; running: number; completed: number; failed: number }
+  vulnerabilities: Record<string, number>
+  recent_scans: Array<{
+    id: string
+    target: string
+    scan_type: string
+    status: string
+    risk_summary: Record<string, unknown>
+    created_at: string
+    started_at: string | null
+    completed_at: string | null
+  }>
+  activity_feed: Array<{
+    id: string
+    type: string
+    title: string
+    severity: string
+    timestamp: string | null
+  }>
+  vulnerability_trends: Array<{
+    month: string
+    critical: number
+    high: number
+    medium: number
+    low: number
+  }>
+}
+
 import type { ApiScan, ApiScanListOut, ScanCreatePayload, ApiScanType, ApiScanStatus } from './types'
 
 export const api = {
@@ -83,6 +193,23 @@ export const api = {
   },
 
   vulnerabilities: {
+    getAll: (params?: { severity?: string; skip?: number; limit?: number }) => {
+      const qs = new URLSearchParams()
+      if (params?.severity) qs.set('severity', params.severity)
+      if (params?.skip != null) qs.set('skip', String(params.skip))
+      if (params?.limit != null) qs.set('limit', String(params.limit))
+      return request<{
+        total: number; critical: number; high: number; medium: number; low: number
+        items: Array<{
+          id: string; scan_id: string; cve_id: string; title: string; description: string
+          severity: string; cvss_score: number; affected_host: string; affected_service: string
+          affected_port: number | null; exploit_available: boolean; remediation: string
+          references: string[]; owasp: string | null; evidence: string | null
+          affected_url: string | null; created_at: string
+        }>
+      }>(`/api/v1/vulnerabilities/?${qs.toString()}`)
+    },
+
     getByScan: (scanId: string, params?: { severity?: string; skip?: number; limit?: number }) => {
       const qs = new URLSearchParams()
       if (params?.severity) qs.set('severity', params.severity)
@@ -94,10 +221,47 @@ export const api = {
           id: string; scan_id: string; cve_id: string; title: string; description: string
           severity: string; cvss_score: number; affected_host: string; affected_service: string
           affected_port: number | null; exploit_available: boolean; remediation: string
-          references: string[]; created_at: string
+          references: string[]; owasp: string | null; evidence: string | null
+          affected_url: string | null; created_at: string
         }>
       }>(`/api/v1/vulnerabilities/scan/${scanId}?${qs.toString()}`)
     },
+  },
+
+  dashboard: {
+    stats: () => request<DashboardStats>('/api/v1/dashboard/stats'),
+  },
+
+  reports: {
+    list: () => request<ApiReport[]>('/api/v1/reports/'),
+    get: (id: string) => request<ApiReport>(`/api/v1/reports/${id}`),
+    create: (scan_id: string, title: string, format: 'pdf' | 'html' | 'json' = 'json') =>
+      request<ApiReport>('/api/v1/reports/', {
+        method: 'POST',
+        body: JSON.stringify({ scan_id, title, format }),
+      }),
+    getContent: (id: string) => request<ReportContent>(`/api/v1/reports/${id}/content`),
+    delete: (id: string) => request<void>(`/api/v1/reports/${id}`, { method: 'DELETE' }),
+  },
+
+  admin: {
+    listUsers: () => request<AdminUser[]>('/api/v1/admin/users'),
+    updateUser: (userId: string, data: { role?: string; status?: string }) =>
+      request<AdminUser>(`/api/v1/admin/users/${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    deleteUser: (userId: string) =>
+      request<void>(`/api/v1/admin/users/${userId}`, { method: 'DELETE' }),
+  },
+
+  settings: {
+    get: () => request<PlatformSettings>('/api/v1/settings/'),
+    update: (data: Partial<PlatformSettings>) =>
+      request<PlatformSettings>('/api/v1/settings/', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
   },
 
   auth: {

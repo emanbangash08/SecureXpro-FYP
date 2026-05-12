@@ -5,18 +5,17 @@ import Link from 'next/link'
 import {
   ArrowLeft, Printer, ShieldAlert, CheckCircle2,
   Server, Globe, Layers, AlertCircle, Clock,
-  Wifi, ExternalLink, Loader2, Lock, Shield,
-  ChevronRight, Activity, Settings,
+  Wifi, ExternalLink, Loader2,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import type { ApiScan, ReconHost } from '@/lib/types'
+import type { ApiScan } from '@/lib/types'
 
 type Vuln = {
   id: string; cve_id: string; title: string; description: string
   severity: string; cvss_score: number; affected_host: string
   affected_service: string; affected_port: number | null
   exploit_available: boolean; remediation: string; references: string[]
-  owasp?: string; source?: string
+  owasp?: string | null; source?: string | null
 }
 
 type VulnList = { total: number; critical: number; high: number; medium: number; low: number; items: Vuln[] }
@@ -114,7 +113,6 @@ export default function ScanDetailPage() {
 
   const rs      = scan.risk_summary
   const riskClr = SEV_COLOR[rs?.overall_risk ?? 'info']
-  const total   = rs?.total ?? 0
   const maxCvss = rs?.max_cvss_score ?? 0
 
   const hosts      = (scan.recon_results ?? []) as any[]
@@ -139,15 +137,6 @@ export default function ScanDetailPage() {
     background: 'rgba(255,255,255,.01)', border: '1px solid rgba(255,255,255,.05)',
     borderRadius: 16, padding: 24, marginBottom: 24,
   }
-
-  const optEntry = (label: string, val: string | boolean | number) => (
-    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid rgba(255,255,255,.04)' }}>
-      <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#8899aa' }}>{label}</span>
-      <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: typeof val === 'boolean' ? (val ? '#00cc88' : '#4a5568') : '#e8edf5' }}>
-        {typeof val === 'boolean' ? (val ? '✓ Enabled' : '✗ Off') : String(val)}
-      </span>
-    </div>
-  )
 
   const VulnCard = ({ v }: { v: Vuln }) => {
     const c = SEV_COLOR[v.severity] ?? '#4a5568'

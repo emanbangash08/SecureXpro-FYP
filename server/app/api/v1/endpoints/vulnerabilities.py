@@ -12,6 +12,40 @@ from app.utils.helpers import doc_to_out
 router = APIRouter(prefix="/vulnerabilities", tags=["Vulnerabilities"])
 
 
+@router.get("/", response_model=VulnerabilityListOut)
+async def list_all_vulnerabilities(
+    severity: Severity | None = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: UserOut = Depends(get_current_user),
+):
+    """Return all vulnerabilities across every scan owned by the current user."""
+    scan_ids = [str(doc["_id"]) async for doc in db.scans.find({"user_id": current_user.id}, {"_id": 1})]
+
+    query: dict = {"scan_id": {"$in": scan_ids}}
+    if severity:
+        query["severity"] = severity.value
+
+    total = await db.vulnerabilities.count_documents(query)
+    cursor = db.vulnerabilities.find(query).sort("cvss_score", -1).skip(skip).limit(limit)
+    items = [VulnerabilityOut(**doc_to_out(doc)) async for doc in cursor]
+
+    counts = {
+        s.value: await db.vulnerabilities.count_documents({"scan_id": {"$in": scan_ids}, "severity": s.value})
+        for s in Severity
+    }
+
+    return VulnerabilityListOut(
+        total=total,
+        critical=counts[Severity.CRITICAL.value],
+        high=counts[Severity.HIGH.value],
+        medium=counts[Severity.MEDIUM.value],
+        low=counts[Severity.LOW.value],
+        items=items,
+    )
+
+
 @router.get("/scan/{scan_id}", response_model=VulnerabilityListOut)
 async def list_vulnerabilities(
     scan_id: str,
