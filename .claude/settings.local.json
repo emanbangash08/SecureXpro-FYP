@@ -12,7 +12,9 @@
       "Bash(curl -s \"http://localhost:8000/api/v1/dashboard/stats\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dGVzdA.test\")",
       "Bash(dir /a .env*)",
       "Bash(curl -s \"http://localhost:8000/\")",
-      "Bash(mkdir -p \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\\\\app\\\\api\\\\v1\\\\[...path]\" 2>/dev/null; echo done)"
+      "Bash(mkdir -p \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\\\\app\\\\api\\\\v1\\\\[...path]\" 2>/dev/null; echo done)",
+      "Bash(python create_admin.py)",
+      "Bash(venv\\\\Scripts\\\\python create_admin.py)"
     ],
     "additionalDirectories": [
       "e:\\flutter projects\\FYP\\SecureXpro-FYP\\app\\api\\v1"
