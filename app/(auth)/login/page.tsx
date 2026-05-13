@@ -209,7 +209,15 @@ export default function LoginPage() {
     return () => clearInterval(cycle)
   }, [])
 
-  const { login } = useAuth()
+  const { login, user, isLoading } = useAuth()
+
+  // Redirect already-authenticated users to their home
+  useEffect(() => {
+    if (isLoading || !user) return
+    if (user.role === 'admin') router.replace('/admin')
+    else if (user.role === 'agent') router.replace('/agent-dashboard')
+    else router.replace('/dashboard')
+  }, [user, isLoading, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -39,11 +39,11 @@ function LiveClock() {
   return <span suppressHydrationWarning>{time}</span>
 }
 
-export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'user' | 'agent' }) {
+export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | 'agent' }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { logout } = useAuth()
-  const nav = role === 'admin' ? adminNav : agentNav
+  const { logout, user } = useAuth()
+  const nav = role === 'agent' ? agentNav : adminNav
   const scanCtx = useScanContext()
   const webCtx = useWebScanContext()
   const isScanning = scanCtx?.isScanning ?? false
@@ -219,11 +219,11 @@ export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'user' | 
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 13, fontWeight: 800, color: '#00e5cc', fontFamily: 'var(--font-display)',
           }}>
-            {role === 'agent' ? 'S' : 'U'}
+            {(user?.full_name || user?.username || (role === 'agent' ? 'A' : 'U'))[0].toUpperCase()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#c8d3e0', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {role === 'agent' ? 'Security Agent' : 'Security Analyst'}
+              {user?.full_name || user?.username || (role === 'agent' ? 'Security Agent' : 'Security Analyst')}
             </div>
             <div style={{ fontSize: 9, color: '#4a5568', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: '#00cc88', fontSize: 8 }}>●</span> Online

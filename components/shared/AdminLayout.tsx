@@ -10,7 +10,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       <ScanProvider>
         <WebScanProvider>
           <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-base)', overflow: 'hidden' }}>
-            <Sidebar role="admin" />
+            <Sidebar role="user" />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <Navbar />
               <main style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
