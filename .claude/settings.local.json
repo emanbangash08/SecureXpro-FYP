@@ -1,7 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(curl -s -X POST \"http://localhost:8000/api/v1/auth/login\" -H \"Content-Type: application/json\" -d \"{\\\\\"email\\\\\":\\\\\"admin@securex.pro\\\\\",\\\\\"password\\\\\":\\\\\"Admin@123\\\\\"}\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); tok=d.get\\('access_token'\\); print\\(tok[:20]+'...' if tok else str\\(d\\)\\)\")",
+      "Bash(curl -sv \"http://localhost:8000/api/v1/auth/login\" -H \"Content-Type: application/json\" -d \"{\\\\\"email\\\\\":\\\\\"test@test.com\\\\\",\\\\\"password\\\\\":\\\\\"test\\\\\"}\")",
+      "Bash(pnpm approve-builds *)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm run *)",
+      "Bash(Read \"C:\\\\Users\\\\ABDULS~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\e--flutter-projects-FYP-SecureXpro-FYP\\\\6a68d003-baa7-4fa0-a7f3-48b948ed707a\\\\tasks\\\\bir1414u8.output\")",
+      "Bash(curl -s \"http://localhost:8000/api/v1/dashboard/stats\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dGVzdA.test\")",
+      "Bash(dir /a .env*)",
+      "Bash(curl -s \"http://localhost:8000/\")",
+      "Bash(mkdir -p \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\\\\app\\\\api\\\\v1\\\\[...path]\" 2>/dev/null; echo done)"
+    ],
+    "additionalDirectories": [
+      "e:\\flutter projects\\FYP\\SecureXpro-FYP\\app\\api\\v1"
     ]
   }
 }

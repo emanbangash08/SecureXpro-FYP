@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "pnpm": {
-    "onlyBuiltDependencies": ["sharp"]
+    "neverBuiltDependencies": ["sharp"]
   },
   "scripts": {
     "dev": "next dev",
