@@ -8,7 +8,7 @@ class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
-    role: UserRole = UserRole.AGENT
+    role: UserRole = UserRole.USER
 
     @field_validator("password")
     @classmethod

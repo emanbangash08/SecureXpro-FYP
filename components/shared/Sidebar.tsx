@@ -19,9 +19,7 @@ const adminNav = [
   { label: 'Web Scans',       href: '/scans/web',       icon: Globe           },
   { label: 'All Scans',       href: '/scans',           icon: Activity        },
   { label: 'Vulnerabilities', href: '/vulnerabilities', icon: AlertTriangle   },
-  { label: 'Agents',          href: '/agents',          icon: Server          },
   { label: 'Reports',         href: '/reports',         icon: FileText        },
-  { label: 'Settings',        href: '/settings',        icon: Settings        },
 ]
 
 const agentNav = [
@@ -41,7 +39,7 @@ function LiveClock() {
   return <span suppressHydrationWarning>{time}</span>
 }
 
-export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'agent' }) {
+export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'user' | 'agent' }) {
   const pathname = usePathname()
   const router = useRouter()
   const { logout } = useAuth()
@@ -91,7 +89,7 @@ export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'agent' }
               Secure<span style={{ color: '#00e5cc' }}>X</span> Pro
             </div>
             <div style={{ fontSize: 9, color: '#2a3a4a', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 1 }}>
-              v2.4.1 · {role === 'admin' ? 'Admin Console' : 'Agent View'}
+              v2.4.1 · {role === 'agent' ? 'Agent View' : 'User Console'}
             </div>
           </div>
         </div>
@@ -221,11 +219,11 @@ export default function Sidebar({ role = 'admin' }: { role?: 'admin' | 'agent' }
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 13, fontWeight: 800, color: '#00e5cc', fontFamily: 'var(--font-display)',
           }}>
-            {role === 'admin' ? 'A' : 'S'}
+            {role === 'agent' ? 'S' : 'U'}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#c8d3e0', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {role === 'admin' ? 'System Admin' : 'Security Agent'}
+              {role === 'agent' ? 'Security Agent' : 'Security Analyst'}
             </div>
             <div style={{ fontSize: 9, color: '#4a5568', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: '#00cc88', fontSize: 8 }}>●</span> Online

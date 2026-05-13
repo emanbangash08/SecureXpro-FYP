@@ -7,8 +7,8 @@ import type { User } from './types'
 interface AuthContextType {
   user: User | null
   isLoading: boolean
-  login: (email: string, password: string) => Promise<'admin' | 'agent'>
-  register: (fullName: string, email: string, username: string, password: string, role: 'admin' | 'agent') => Promise<void>
+  login: (email: string, password: string) => Promise<'admin' | 'user' | 'agent'>
+  register: (fullName: string, email: string, username: string, password: string, role: 'admin' | 'user' | 'agent') => Promise<void>
   logout: () => void
 }
 
@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsLoading(false))
   }, [])
 
-  const login = async (email: string, password: string): Promise<'admin' | 'agent'> => {
+  const login = async (email: string, password: string): Promise<'admin' | 'user' | 'agent'> => {
     const res = await api.auth.login(email, password)
     localStorage.setItem('access_token', res.access_token)
     localStorage.setItem('refresh_token', res.refresh_token)
@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     username: string,
     password: string,
-    role: 'admin' | 'agent',
+    role: 'admin' | 'user' | 'agent',
   ) => {
     await api.auth.register({ full_name: fullName, email, username, password, role })
   }

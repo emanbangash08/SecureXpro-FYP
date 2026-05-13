@@ -27,7 +27,7 @@ export interface RegisterPayload {
   username: string
   email: string
   password: string
-  role: 'admin' | 'agent'
+  role: 'admin' | 'user' | 'agent'
 }
 
 export interface LoginResponse {
@@ -39,10 +39,32 @@ export interface LoginResponse {
     username: string
     email: string
     full_name: string
-    role: 'admin' | 'agent'
+    role: 'admin' | 'user' | 'agent'
     status: string
     created_at: string
     last_login: string | null
+  }
+}
+
+export interface AdminStats {
+  users: {
+    total: number
+    by_role: { admin: number; user: number; agent: number }
+    active: number
+    banned: number
+  }
+  scans: {
+    total: number
+    running: number
+    completed: number
+    failed: number
+  }
+  vulnerabilities: {
+    total: number
+    critical: number
+    high: number
+    medium: number
+    low: number
   }
 }
 
@@ -51,7 +73,7 @@ export interface AdminUser {
   username: string
   email: string
   full_name: string
-  role: 'admin' | 'agent'
+  role: 'admin' | 'user' | 'agent'
   status: 'active' | 'inactive' | 'banned'
   created_at: string
   last_login: string | null
@@ -253,6 +275,7 @@ export const api = {
       }),
     deleteUser: (userId: string) =>
       request<void>(`/api/v1/admin/users/${userId}`, { method: 'DELETE' }),
+    stats: () => request<AdminStats>('/api/v1/admin/stats'),
   },
 
   settings: {

@@ -186,7 +186,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPass, setShowPass] = useState(false)
-  const [role, setRole] = useState<'admin'|'agent'>('admin')
+  const [role, setRole] = useState<'user'|'agent'>('user')
   const [tickerIdx, setTickerIdx] = useState(0)
   const [tickerVisible, setTickerVisible] = useState(true)
 
@@ -217,7 +217,9 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const role = await login(email, password)
-      router.push(role === 'agent' ? '/agent-dashboard' : '/dashboard')
+      if (role === 'admin') router.push('/admin')
+      else if (role === 'agent') router.push('/agent-dashboard')
+      else router.push('/dashboard')
     } catch (err: unknown) {
       setError((err as Error).message || 'Login failed. Check your credentials.')
       setLoading(false)
@@ -310,8 +312,8 @@ export default function LoginPage() {
           {/* Role Selector */}
           <div style={{ display: 'flex', background: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 4, marginBottom: 28, border: '1px solid rgba(255,255,255,0.04)' }}>
             {([
-              { id: 'admin', label: 'Administrator', icon: User },
-              { id: 'agent', label: 'Field Agent', icon: Cpu },
+              { id: 'user',  label: 'User',        icon: User },
+              { id: 'agent', label: 'Field Agent',  icon: Cpu  },
             ] as const).map(r => {
               const active = role === r.id
               return (
@@ -430,8 +432,8 @@ export default function LoginPage() {
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Demo Credentials</div>
             <div style={{ display: 'flex', gap: 20 }}>
               <div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#8899aa', marginBottom: 2 }}>Admin</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#00e5cc' }}>admin / admin123</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#8899aa', marginBottom: 2 }}>User</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#00e5cc' }}>user / user123</div>
               </div>
               <div style={{ width: 1, background: 'rgba(255,255,255,0.05)' }} />
               <div>

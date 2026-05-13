@@ -129,37 +129,54 @@ async def _execute_scan(scan_id: str) -> None:
                 {"$set": {"recon_results": recon_data, "updated_at": datetime.now(timezone.utc)}},
             )
 
-        # ── Phase 2: Vulnerability Correlation (NVD CVE) ─────────────────────
+        # ── Phase 2: Vulnerability Correlation (NVD CVE + EPSS + KEV) ──────────
         if hosts and scan_type in (ScanType.VULNERABILITY.value, ScanType.FULL.value):
             await _set_phase(db, scan_id, "vuln_correlation")
             await _log(db, scan_id, "vuln_correlation", "cmd",
-                       "> securex-nvd --api nist.gov/rest/json/cves/2.0 --correlate")
+                       "> securex-nvd --cpe-match --epss --kev --correlate")
             await _log(db, scan_id, "vuln_correlation", "info",
-                       "  Querying NIST National Vulnerability Database...")
+                       "  Querying NIST NVD (CPE exact match → keyword fallback)...")
+            await _log(db, scan_id, "vuln_correlation", "info",
+                       "  Loading CISA KEV catalog and FIRST.org EPSS scores...")
 
             for h in hosts:
                 for p in h.ports:
                     svc_str = f"{p.service} {p.version}".strip() if p.version else p.service
                     if svc_str:
                         await _log(db, scan_id, "vuln_correlation", "info",
-                                   f"  Checking {h.ip}:{p.port} ({svc_str})...")
+                                   f"  Correlating {h.ip}:{p.port} ({svc_str})...")
 
-            await vuln_service.correlate_vulnerabilities(db, scan_id, hosts)
+            inserted = await vuln_service.correlate_vulnerabilities(db, scan_id, hosts)
 
-            vuln_count = await db.vulnerabilities.count_documents({"scan_id": scan_id})
+            vuln_count    = len(inserted)
+            kev_count     = sum(1 for v in inserted if v.get("in_kev"))
+            high_epss     = sum(1 for v in inserted if (v.get("epss_score") or 0) >= 0.4)
+            exploit_count = sum(1 for v in inserted if v.get("exploit_available"))
+
             if vuln_count:
-                cursor = db.vulnerabilities.find({"scan_id": scan_id}).sort("cvss_score", -1).limit(5)
-                async for v in cursor:
-                    sev   = v["severity"].upper()
-                    score = v["cvss_score"]
-                    cve   = v["cve_id"]
-                    title = v.get("title", "")[:55]
-                    tag   = "  [CRITICAL]" if sev == "CRITICAL" else f"  [{sev}]    "
-                    lvl   = "error" if sev in ("CRITICAL", "HIGH") else "warning"
+                # Show top-5 by CVSS
+                top5 = sorted(inserted, key=lambda v: v.get("cvss_score", 0), reverse=True)[:5]
+                for v in top5:
+                    sev     = v["severity"].upper()
+                    score   = v["cvss_score"]
+                    cve     = v["cve_id"]
+                    kev_tag = " [KEV]" if v.get("in_kev") else ""
+                    mtype   = " (cpe)" if v.get("match_type") == "cpe_exact" else ""
+                    tag     = "  [CRITICAL]" if sev == "CRITICAL" else f"  [{sev}]    "
+                    lvl     = "error" if sev in ("CRITICAL", "HIGH") else "warning"
                     await _log(db, scan_id, "vuln_correlation", lvl,
-                               f"{tag} {cve}  CVSS:{score}  {title}")
+                               f"{tag} {cve}  CVSS:{score}{kev_tag}{mtype}")
+
+                if kev_count:
+                    await _log(db, scan_id, "vuln_correlation", "error",
+                               f"  [!] {kev_count} CVE(s) in CISA Known Exploited Vulnerabilities list")
+                if high_epss:
+                    await _log(db, scan_id, "vuln_correlation", "warning",
+                               f"  [!] {high_epss} CVE(s) with EPSS exploit probability >= 40%")
+
                 await _log(db, scan_id, "vuln_correlation", "success",
-                           f"  [+] Correlation complete — {vuln_count} CVE(s) identified")
+                           f"  [+] Correlation complete — {vuln_count} CVE(s) found, "
+                           f"{exploit_count} exploitable")
             else:
                 await _log(db, scan_id, "vuln_correlation", "info",
                            "  [+] No CVEs matched for discovered services")
@@ -213,10 +230,11 @@ async def _execute_scan(scan_id: str) -> None:
             await _log(db, scan_id, "web_headers", "success",
                        f"  [+] Header audit complete — {len(_all_web)} finding(s) so far")
 
-            # Sub-phase: web_active — path probing and HTTP methods
+            # Sub-phase: web_active — path probing, injection testing, CSRF
             await _set_phase(db, scan_id, "web_active")
             await _log(db, scan_id, "web_active", "cmd",
-                       f"> securex-web --probe-paths {web_service.SENSITIVE_PATH_COUNT} --check-methods")
+                       f"> securex-web --probe-paths {web_service.SENSITIVE_PATH_COUNT} "
+                       f"--check-methods --sqli --xss --csrf --cookies")
             await _log(db, scan_id, "web_active", "info",
                        f"  Probing {web_service.SENSITIVE_PATH_COUNT} sensitive paths...")
 
@@ -242,10 +260,113 @@ async def _execute_scan(scan_id: str) -> None:
             except Exception as exc:
                 await _log(db, scan_id, "web_active", "warning", f"  [!] Method check error: {exc}")
 
+            # SQL Injection
+            await _log(db, scan_id, "web_active", "info",
+                       "  Testing for SQL injection (error-based payloads)...")
+            try:
+                _sqli_fnd = await web_service.check_sql_injection(_client, web_url)
+                _all_web += _sqli_fnd
+                if _sqli_fnd:
+                    for _f in _sqli_fnd:
+                        await _log(db, scan_id, "web_active", "error",
+                                   f"  [CRITICAL] {_f.title} — param: {_f.affected_url.split('?')[-1]}")
+                else:
+                    await _log(db, scan_id, "web_active", "success",
+                               "  [+] No SQL injection vectors detected")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] SQLi check error: {exc}")
+
+            # XSS
+            await _log(db, scan_id, "web_active", "info",
+                       "  Testing for reflected XSS (probe injection)...")
+            try:
+                _xss_fnd = await web_service.check_xss(_client, web_url)
+                _all_web += _xss_fnd
+                if _xss_fnd:
+                    for _f in _xss_fnd:
+                        await _log(db, scan_id, "web_active", "error",
+                                   f"  [HIGH] {_f.title} — {_f.affected_url.split('?')[-1]}")
+                else:
+                    await _log(db, scan_id, "web_active", "success",
+                               "  [+] No reflected XSS detected")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] XSS check error: {exc}")
+
+            # CSRF
+            await _log(db, scan_id, "web_active", "info",
+                       "  Checking CSRF protection (forms + CORS credentials)...")
+            try:
+                _csrf_fnd = await web_service.check_csrf(_client, web_url, _resp)
+                _all_web += _csrf_fnd
+                for _f in _csrf_fnd:
+                    await _log(db, scan_id, "web_active", "warning",
+                               f"  [{_f.severity.value.upper()}] {_f.title}")
+                if not _csrf_fnd:
+                    await _log(db, scan_id, "web_active", "success",
+                               "  [+] No CSRF vulnerabilities detected")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] CSRF check error: {exc}")
+
+            # Cookie security on auth endpoints
+            await _log(db, scan_id, "web_active", "info",
+                       "  Probing auth endpoints for insecure cookie flags...")
+            try:
+                _ck_fnd = await web_service.check_cookies_on_endpoints(_client, web_url)
+                _all_web += _ck_fnd
+                for _f in _ck_fnd:
+                    await _log(db, scan_id, "web_active", "warning",
+                               f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                if not _ck_fnd:
+                    await _log(db, scan_id, "web_active", "success",
+                               "  [+] No insecure cookie flags found on auth endpoints")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] Cookie endpoint check error: {exc}")
+
             try:
                 await _client.aclose()
             except Exception:
                 pass
+
+            # Sub-phase: web_zap — OWASP ZAP Docker active scan
+            await _set_phase(db, scan_id, "web_zap")
+            await _log(db, scan_id, "web_zap", "cmd",
+                       "> docker run ghcr.io/zaproxy/zaproxy:stable zap.sh -daemon --spider --ascan")
+            from app.services import zap_client
+            docker_ok = await zap_client.check_docker_available()
+            if docker_ok:
+                await _log(db, scan_id, "web_zap", "info",
+                           "  Docker available — launching ZAP container...")
+                await _log(db, scan_id, "web_zap", "info",
+                           f"  Target: {web_url}")
+                await _log(db, scan_id, "web_zap", "info",
+                           "  Phase 1: Spider (passive crawl)...")
+                try:
+                    _zap_findings = await zap_client.run_zap_scan(
+                        web_url,
+                        scan_id_suffix=scan_id[-8:],
+                    )
+                    _all_web += _zap_findings
+
+                    if _zap_findings:
+                        await _log(db, scan_id, "web_zap", "info",
+                                   "  Phase 2: Active scan complete")
+                        for _f in _zap_findings[:10]:
+                            _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                            await _log(db, scan_id, "web_zap", _lvl,
+                                       f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                        await _log(db, scan_id, "web_zap", "success",
+                                   f"  [+] ZAP scan complete — {len(_zap_findings)} finding(s)")
+                    else:
+                        await _log(db, scan_id, "web_zap", "success",
+                                   "  [+] ZAP scan complete — no additional findings")
+                except Exception as _zap_exc:
+                    await _log(db, scan_id, "web_zap", "warning",
+                               f"  [!] ZAP scan error: {_zap_exc}")
+            else:
+                await _log(db, scan_id, "web_zap", "warning",
+                           "  [!] Docker not available — skipping ZAP scan")
+                await _log(db, scan_id, "web_zap", "info",
+                           "  Install Docker Desktop to enable OWASP ZAP integration")
 
             await web_service.persist_findings(db, scan_id, _all_web, _host, _port, _scheme)
             _web_results = web_service.make_summary(_resp, web_url, _all_web)
@@ -253,8 +374,8 @@ async def _execute_scan(scan_id: str) -> None:
                 {"_id": ObjectId(scan_id)},
                 {"$set": {"web_results": _web_results, "updated_at": datetime.now(timezone.utc)}},
             )
-            await _log(db, scan_id, "web_active", "success",
-                       f"  [+] Active probing complete — {len(_all_web)} total finding(s)")
+            await _log(db, scan_id, "web_zap", "success",
+                       f"  [+] Web assessment complete — {len(_all_web)} total finding(s)")
 
         # ── Phase 4: Exploit Analysis ─────────────────────────────────────────
         if scan_type in (ScanType.VULNERABILITY.value, ScanType.FULL.value):

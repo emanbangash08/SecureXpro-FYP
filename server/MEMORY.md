@@ -217,18 +217,33 @@ Always:  -Pn -sV --version-intensity 5 -p {port_range}
 
 ---
 
-## Module 5 — Vulnerability Service (`app/services/vuln_service.py`)
+## Module 5 — Vulnerability Correlation Engine (complete — Module 2)
 
-Queries NIST NVD API v2.0 (`https://services.nvd.nist.gov/rest/json/cves/2.0`).
+Split into four files for clean separation of concerns:
 
-### Key details
-- Searches even without version string (removed `not port.version` guard)
-- Uses `_SERVICE_KEYWORD_MAP` to translate nmap service names to better NVD search terms:
-  - `msrpc` → `"Microsoft Windows RPC remote code execution"`
-  - `microsoft-ds` → `"Windows SMB Server Message Block"`
-  - `netbios-ssn` → `"Windows NetBIOS SMB"` etc.
-- Each CVE match → inserted as vulnerability document in `db.vulnerabilities`
-- Errors logged as `logger.warning`, scan continues even if NVD is unreachable
+| File | Role |
+|---|---|
+| `app/services/nvd_client.py` | NVD API v2.0 — CPE exact match + keyword fallback + version range validation + OS compatibility |
+| `app/services/epss_client.py` | FIRST.org EPSS — batch exploit probability scoring (no API key) |
+| `app/services/kev_client.py` | CISA KEV catalog — known-exploited CVE set, 12h in-process cache |
+| `app/services/vuln_service.py` | Orchestrator — concurrent port lookup, EPSS+KEV enrichment, deduplication, DB write |
+
+### Lookup pipeline per port
+1. **CPE exact match** — builds `cpe:2.3:a:{vendor}:{product}:{version}:*` from nmap data; NVD validates version ranges server-side
+2. **Keyword fallback** — if CPE yields nothing: keyword search with client-side version range + OS compatibility filters
+3. **EPSS batch** — single call to `https://api.first.org/data/v1/epss` for all CVE IDs
+4. **KEV batch** — CISA JSON feed downloaded once, cached 12h
+5. **exploit_available = True** when CVE is in KEV *or* EPSS ≥ 0.4 (40%)
+6. **Dedup** by `{cve_id}|{host_ip}|{port}` before MongoDB insert
+
+### New vulnerability document fields
+- `epss_score` — EPSS probability 0.0–1.0 (FIRST.org)
+- `epss_percentile` — EPSS percentile 0.0–1.0
+- `in_kev` — True if in CISA Known Exploited Vulnerabilities list
+- `match_type` — `"cpe_exact"` | `"keyword"` (confidence indicator)
+
+### Rate limiting
+`asyncio.Semaphore(3)` inside `correlate_vulnerabilities()` — max 3 concurrent NVD requests per scan to stay within the 5 req/30s unauthenticated limit.
 
 ---
 

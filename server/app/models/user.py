@@ -4,6 +4,7 @@ from enum import Enum
 
 class UserRole(str, Enum):
     ADMIN = "admin"
+    USER  = "user"
     AGENT = "agent"
 
 
@@ -18,7 +19,7 @@ def user_document(
     email: str,
     hashed_password: str,
     full_name: str = "",
-    role: UserRole = UserRole.AGENT,
+    role: UserRole = UserRole.USER,
 ) -> dict:
     now = datetime.now(timezone.utc)
     return {

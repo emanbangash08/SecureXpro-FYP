@@ -9,22 +9,24 @@ import type { ApiScan, ScanLog, ScanReport, ScanCreatePayload } from './types'
 
 // ── Pipeline definition ───────────────────────────────────────────────────────
 
-export type WebPipelineStageId = 'web_init' | 'web_headers' | 'web_active' | 'risk' | 'report'
+export type WebPipelineStageId = 'web_init' | 'web_headers' | 'web_active' | 'web_zap' | 'risk' | 'report'
 
 export const WEB_PIPELINE: {
   id: WebPipelineStageId; phase: string; label: string; est: string; color: string
 }[] = [
-  { id: 'web_init',    phase: 'web_init',          label: 'Connect',      est: '~10s', color: '#00e5cc' },
-  { id: 'web_headers', phase: 'web_headers',        label: 'Header Audit', est: '~15s', color: '#4d9eff' },
-  { id: 'web_active',  phase: 'web_active',         label: 'Path Probe',   est: '~45s', color: '#ff6b35' },
-  { id: 'risk',        phase: 'risk_scoring',       label: 'Risk Score',   est: '~10s', color: '#ffcc00' },
-  { id: 'report',      phase: 'report_generation',  label: 'Report',       est: '~8s',  color: '#00cc88' },
+  { id: 'web_init',    phase: 'web_init',          label: 'Connect',      est: '~10s',  color: '#00e5cc' },
+  { id: 'web_headers', phase: 'web_headers',        label: 'Header Audit', est: '~15s',  color: '#4d9eff' },
+  { id: 'web_active',  phase: 'web_active',         label: 'Active Probe', est: '~45s',  color: '#ff6b35' },
+  { id: 'web_zap',     phase: 'web_zap',            label: 'ZAP Scan',     est: '~5min', color: '#a855f7' },
+  { id: 'risk',        phase: 'risk_scoring',       label: 'Risk Score',   est: '~10s',  color: '#ffcc00' },
+  { id: 'report',      phase: 'report_generation',  label: 'Report',       est: '~8s',   color: '#00cc88' },
 ]
 
 export const WEB_PHASE_TO_STAGE: Record<string, WebPipelineStageId> = {
   web_init:          'web_init',
   web_headers:       'web_headers',
   web_active:        'web_active',
+  web_zap:           'web_zap',
   risk_scoring:      'risk',
   report_generation: 'report',
 }
@@ -33,6 +35,7 @@ const WEB_STAGE_DURATION_MS: Record<WebPipelineStageId, number> = {
   web_init:    10_000,
   web_headers: 15_000,
   web_active:  45_000,
+  web_zap:    480_000,
   risk:        10_000,
   report:       8_000,
 }

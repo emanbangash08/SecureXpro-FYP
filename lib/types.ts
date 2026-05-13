@@ -106,7 +106,7 @@ export interface ScanReport {
 }
 
 // ── User and Auth Types ────────────────────────────────────────────────────
-export type UserRole = 'admin' | 'agent'
+export type UserRole = 'admin' | 'user' | 'agent'
 
 export interface User {
   id: string

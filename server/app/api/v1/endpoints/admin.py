@@ -67,3 +67,49 @@ async def delete_user(
     result = await db.users.delete_one({"_id": ObjectId(user_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
+
+
+@router.get("/stats")
+async def admin_stats(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: UserOut = Depends(require_admin),
+):
+    user_total   = await db.users.count_documents({})
+    admin_count  = await db.users.count_documents({"role": "admin"})
+    user_count   = await db.users.count_documents({"role": "user"})
+    agent_count  = await db.users.count_documents({"role": "agent"})
+    active_users = await db.users.count_documents({"status": "active"})
+    banned_users = await db.users.count_documents({"status": "banned"})
+
+    scan_total     = await db.scans.count_documents({})
+    scan_running   = await db.scans.count_documents({"status": "running"})
+    scan_completed = await db.scans.count_documents({"status": "completed"})
+    scan_failed    = await db.scans.count_documents({"status": "failed"})
+
+    vuln_total    = await db.vulnerabilities.count_documents({})
+    vuln_critical = await db.vulnerabilities.count_documents({"severity": "critical"})
+    vuln_high     = await db.vulnerabilities.count_documents({"severity": "high"})
+    vuln_medium   = await db.vulnerabilities.count_documents({"severity": "medium"})
+    vuln_low      = await db.vulnerabilities.count_documents({"severity": "low"})
+
+    return {
+        "users": {
+            "total":   user_total,
+            "by_role": {"admin": admin_count, "user": user_count, "agent": agent_count},
+            "active":  active_users,
+            "banned":  banned_users,
+        },
+        "scans": {
+            "total":     scan_total,
+            "running":   scan_running,
+            "completed": scan_completed,
+            "failed":    scan_failed,
+        },
+        "vulnerabilities": {
+            "total":    vuln_total,
+            "critical": vuln_critical,
+            "high":     vuln_high,
+            "medium":   vuln_medium,
+            "low":      vuln_low,
+        },
+    }

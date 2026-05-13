@@ -5,17 +5,22 @@ No external tools required — uses httpx only.
 Each finding is OWASP Top 10 2021 mapped and stored as a vulnerability document.
 
 Public API (for scan_tasks.py granular phase control):
-  connect_to_target(url)          → (client, resp)
-  check_headers_and_disclosure()  → list[WebFinding]
-  check_cors()                    → list[WebFinding]
-  check_cookies()                 → list[WebFinding]
-  check_sensitive_paths()         → list[WebFinding]  (async)
-  check_http_methods()            → list[WebFinding]  (async)
-  check_ssl_or_https()            → list[WebFinding]
-  persist_findings()              → None  (async)
-  make_summary()                  → dict
-  run_web_assessment()            → dict  (all-in-one, backward compat)
+  connect_to_target(url)              → (client, resp)
+  check_headers_and_disclosure()      → list[WebFinding]
+  check_cors()                        → list[WebFinding]
+  check_cookies()                     → list[WebFinding]
+  check_sensitive_paths()             → list[WebFinding]  (async)
+  check_http_methods()                → list[WebFinding]  (async)
+  check_ssl_or_https()                → list[WebFinding]
+  check_sql_injection()               → list[WebFinding]  (async)
+  check_xss()                         → list[WebFinding]  (async)
+  check_csrf()                        → list[WebFinding]  (async)
+  check_cookies_on_endpoints()        → list[WebFinding]  (async)
+  persist_findings()                  → None  (async)
+  make_summary()                      → dict
+  run_web_assessment()                → dict  (all-in-one, backward compat)
 """
+import re
 import ssl
 import socket
 import logging
@@ -67,6 +72,9 @@ _SENSITIVE_PATHS: list[tuple[str, str, Severity, float, str]] = [
     ("/phpmyadmin/",        "phpMyAdmin Exposed",              Severity.CRITICAL, 9.8, "A05:2021"),
     ("/adminer.php",        "Adminer Database Tool Exposed",   Severity.CRITICAL, 9.8, "A05:2021"),
     ("/api/v1/",            "API Endpoint Enumeration",        Severity.LOW,      3.7, "A01:2021"),
+    ("/docs",               "Swagger UI Exposed",              Severity.MEDIUM,   5.3, "A05:2021"),
+    ("/openapi.json",       "OpenAPI Schema Exposed",          Severity.MEDIUM,   5.3, "A05:2021"),
+    ("/redoc",              "ReDoc API Docs Exposed",          Severity.LOW,      3.7, "A05:2021"),
     ("/swagger-ui.html",    "Swagger UI Exposed",              Severity.MEDIUM,   5.3, "A05:2021"),
     ("/api-docs",           "API Docs Exposed",                Severity.MEDIUM,   5.3, "A05:2021"),
     ("/actuator",           "Spring Actuator Exposed",         Severity.HIGH,     8.2, "A05:2021"),
@@ -125,6 +133,62 @@ _REQUIRED_HEADERS: list[tuple[str, str, Severity, float, str, str, str]] = [
 ]
 
 
+# ── SQL Injection detection ───────────────────────────────────────────────────
+
+# Database error fingerprints — error-based detection only (non-intrusive)
+_SQL_ERROR_PATTERNS: list[str] = [
+    "you have an error in your sql syntax",
+    "warning: mysql",
+    "mysql_fetch", "mysql_num_rows",
+    "pg::syntaxerror", "psqlexception", "postgresql",
+    "ora-00933", "ora-01756", "oracle error",
+    "microsoft ole db", "odbc sql server", "sqlserver jdbc",
+    "unclosed quotation mark", "incorrect syntax near",
+    "sqlite3", "sqlite_error",
+    "syntax error in sql", "invalid sql statement",
+    "sql command not properly ended",
+    "db2 sql error", "com.ibm.db2",
+]
+
+# Error-based payloads only — no time-delay or UNION (safe/non-destructive)
+_SQL_PAYLOADS: list[str] = ["'", "\"", "1'--", "1\" --", "') OR ('1'='1"]
+
+_SQL_TEST_PARAMS: list[str] = [
+    "id", "q", "query", "search", "page", "cat", "category",
+    "item", "product", "sort", "order", "name", "user", "filter",
+]
+
+# ── XSS detection ─────────────────────────────────────────────────────────────
+
+# Unique probe string — easy to spot in reflected response
+_XSS_PROBE  = "secxpro<img src=x onerror=alert(1)>secxpro"
+_XSS_MARKER = "secxpro<img"   # unencoded reflection means XSS
+
+_XSS_TEST_PARAMS: list[str] = [
+    "q", "query", "search", "name", "input", "msg",
+    "message", "text", "comment", "title", "keyword", "s",
+]
+
+# ── CSRF detection ────────────────────────────────────────────────────────────
+
+_CSRF_TOKEN_NAMES = re.compile(
+    r'(csrf|token|_token|authenticity_token|__requestverificationtoken|nonce)',
+    re.IGNORECASE,
+)
+_HTML_FORM_RE    = re.compile(r'<form[^>]*>(.*?)</form>', re.IGNORECASE | re.DOTALL)
+_FORM_METHOD_RE  = re.compile(r'method=["\']?(post)["\']?', re.IGNORECASE)
+_FORM_INPUT_RE   = re.compile(r'<input[^>]+>', re.IGNORECASE)
+
+# ── Cookie endpoint probing ───────────────────────────────────────────────────
+
+# Auth endpoints likely to issue Set-Cookie headers
+_COOKIE_PROBE_ENDPOINTS: list[tuple[str, dict]] = [
+    ("/api/v1/auth/login", {"email": "probe@test.com", "password": "probe123"}),
+    ("/login",             {"username": "probe",        "password": "probe123"}),
+    ("/signin",            {"email": "probe@test.com",  "password": "probe123"}),
+    ("/auth/login",        {"email": "probe@test.com",  "password": "probe123"}),
+]
+
 # ── Public building-block functions ──────────────────────────────────────────
 
 async def connect_to_target(url: str) -> tuple[httpx.AsyncClient, httpx.Response]:
@@ -169,6 +233,48 @@ def check_ssl_or_https(parsed: ParseResult, resp: httpx.Response, url: str) -> l
     return _check_missing_https(resp, url)
 
 
+async def check_sql_injection(client: httpx.AsyncClient, url: str) -> list[WebFinding]:
+    """
+    Error-based SQL injection detection.
+    Injects payloads into common URL parameters and checks responses
+    for database error fingerprints. Non-intrusive — no time-delay or UNION.
+    """
+    return await _check_sql_injection(client, url)
+
+
+async def check_xss(client: httpx.AsyncClient, url: str) -> list[WebFinding]:
+    """
+    Reflected XSS detection.
+    Injects a unique probe string into common URL parameters and checks
+    whether it appears unencoded in the response body.
+    """
+    return await _check_xss(client, url)
+
+
+async def check_csrf(
+    client: httpx.AsyncClient,
+    url: str,
+    resp: httpx.Response,
+) -> list[WebFinding]:
+    """
+    CSRF protection checks.
+    - Parses HTML forms in the initial response for missing CSRF tokens
+    - Probes the API with a forged Origin to detect CORS credential misconfig
+    """
+    return await _check_csrf(client, url, resp)
+
+
+async def check_cookies_on_endpoints(
+    client: httpx.AsyncClient,
+    url: str,
+) -> list[WebFinding]:
+    """
+    Probes known auth endpoints (login, signin) to discover Set-Cookie headers,
+    then checks each cookie for Secure / HttpOnly / SameSite flags.
+    """
+    return await _check_cookies_on_endpoints(client, url)
+
+
 async def persist_findings(
     db: AsyncIOMotorDatabase,
     scan_id: str,
@@ -211,6 +317,7 @@ def make_summary(resp: httpx.Response, url: str, findings: list[WebFinding]) -> 
             "headers", "server_disclosure", "cors", "cookies",
             "sensitive_paths", "http_methods",
             "ssl" if parsed.scheme == "https" else "https_redirect",
+            "sql_injection", "xss", "csrf", "zap_active_scan",
         ],
     }
 
@@ -269,6 +376,26 @@ async def run_web_assessment(
             findings += check_ssl_or_https(parsed, resp, url)
         except Exception as exc:
             logger.warning("SSL check failed: %s", exc)
+
+        try:
+            findings += await check_sql_injection(client, url)
+        except Exception as exc:
+            logger.warning("SQLi check failed: %s", exc)
+
+        try:
+            findings += await check_xss(client, url)
+        except Exception as exc:
+            logger.warning("XSS check failed: %s", exc)
+
+        try:
+            findings += await check_csrf(client, url, resp)
+        except Exception as exc:
+            logger.warning("CSRF check failed: %s", exc)
+
+        try:
+            findings += await check_cookies_on_endpoints(client, url)
+        except Exception as exc:
+            logger.warning("Cookie endpoint check failed: %s", exc)
 
     await persist_findings(db, scan_id, findings, host, port, parsed.scheme)
     return make_summary(resp, url, findings)
@@ -469,6 +596,210 @@ def _check_missing_https(resp: httpx.Response, url: str) -> list[WebFinding]:
         remediation="Enable HTTPS with a valid TLS certificate and redirect all HTTP traffic to HTTPS.",
         references=["https://letsencrypt.org/"],
     )]
+
+
+async def _check_sql_injection(client: httpx.AsyncClient, url: str) -> list[WebFinding]:
+    findings: list[WebFinding] = []
+    seen_params: set[str] = set()
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+
+    for param in _SQL_TEST_PARAMS:
+        if param in seen_params:
+            continue
+        for payload in _SQL_PAYLOADS:
+            test_url = f"{base}?{param}={payload}"
+            try:
+                resp = await client.get(test_url, timeout=8, follow_redirects=True)
+                body = resp.text.lower()
+                matched = next((p for p in _SQL_ERROR_PATTERNS if p in body), None)
+                if matched:
+                    seen_params.add(param)
+                    findings.append(WebFinding(
+                        check_id=f"WEB-SQLI-{param.upper()}",
+                        title="SQL Injection Vulnerability",
+                        severity=Severity.CRITICAL,
+                        cvss_score=9.8,
+                        owasp="A03:2021",
+                        affected_url=test_url,
+                        description=(
+                            f"SQL injection detected in parameter '{param}'. "
+                            f"The server returned a database error when injected with payload '{payload}'."
+                        ),
+                        evidence=f"Payload: {payload!r}  →  DB error pattern matched: {matched!r}",
+                        remediation=(
+                            "Use parameterized queries / prepared statements. "
+                            "Never concatenate user input into SQL strings."
+                        ),
+                        references=[
+                            "https://owasp.org/www-community/attacks/SQL_Injection",
+                            "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html",
+                        ],
+                    ))
+                    break  # one finding per param is enough
+            except Exception:
+                continue
+
+    return findings
+
+
+async def _check_xss(client: httpx.AsyncClient, url: str) -> list[WebFinding]:
+    findings: list[WebFinding] = []
+    seen_params: set[str] = set()
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+
+    for param in _XSS_TEST_PARAMS:
+        if param in seen_params:
+            continue
+        test_url = f"{base}?{param}={_XSS_PROBE}"
+        try:
+            resp = await client.get(test_url, timeout=8, follow_redirects=True)
+            if _XSS_MARKER in resp.text:
+                seen_params.add(param)
+                findings.append(WebFinding(
+                    check_id=f"WEB-XSS-{param.upper()}",
+                    title="Reflected Cross-Site Scripting (XSS)",
+                    severity=Severity.HIGH,
+                    cvss_score=7.2,
+                    owasp="A03:2021",
+                    affected_url=test_url,
+                    description=(
+                        f"Reflected XSS detected in parameter '{param}'. "
+                        "The injected probe was returned unencoded in the response body, "
+                        "allowing an attacker to execute arbitrary JavaScript in a victim's browser."
+                    ),
+                    evidence=f"Probe {_XSS_PROBE!r} reflected unescaped via param '{param}'",
+                    remediation=(
+                        "HTML-encode all user-controlled output in the correct context "
+                        "(HTML body, attribute, JavaScript). Enforce a strict Content-Security-Policy."
+                    ),
+                    references=[
+                        "https://owasp.org/www-community/attacks/xss/",
+                        "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html",
+                    ],
+                ))
+        except Exception:
+            continue
+
+    return findings
+
+
+async def _check_csrf(
+    client: httpx.AsyncClient,
+    url: str,
+    resp: httpx.Response,
+) -> list[WebFinding]:
+    findings: list[WebFinding] = []
+
+    # ── 1. Detect POST forms without CSRF tokens ──────────────────────────────
+    forms = _HTML_FORM_RE.findall(resp.text)
+    unprotected = 0
+
+    for form_body in forms:
+        if not _FORM_METHOD_RE.search(form_body):
+            continue  # GET forms are not CSRF-relevant
+        has_token = any(
+            _CSRF_TOKEN_NAMES.search(inp)
+            for inp in _FORM_INPUT_RE.findall(form_body)
+        )
+        if not has_token:
+            unprotected += 1
+
+    if unprotected:
+        findings.append(WebFinding(
+            check_id="WEB-CSRF-NO_TOKEN",
+            title="CSRF Protection Missing on HTML Forms",
+            severity=Severity.MEDIUM,
+            cvss_score=6.5,
+            owasp="A01:2021",
+            affected_url=url,
+            description=(
+                f"Found {unprotected} HTML POST form(s) without a CSRF token field. "
+                "Attackers can forge requests on behalf of authenticated users."
+            ),
+            evidence=f"{unprotected} POST form(s) with no detectable CSRF token input.",
+            remediation=(
+                "Add a CSRF token to all state-changing forms. "
+                "Use SameSite=Strict on session cookies as an additional layer."
+            ),
+            references=[
+                "https://owasp.org/www-community/attacks/csrf",
+                "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+            ],
+        ))
+
+    # ── 2. Probe API for CORS credential misconfiguration (CSRF via CORS) ─────
+    parsed = urlparse(url)
+    probe_endpoint = f"{parsed.scheme}://{parsed.netloc}/api/v1/scans/"
+    try:
+        cors_resp = await client.post(
+            probe_endpoint,
+            headers={
+                "Origin": "https://evil-attacker.com",
+                "Content-Type": "application/json",
+            },
+            content=b"{}",
+            timeout=8,
+        )
+        acao = cors_resp.headers.get("access-control-allow-origin", "")
+        acac = cors_resp.headers.get("access-control-allow-credentials", "").lower()
+
+        if acao == "https://evil-attacker.com" and acac == "true":
+            findings.append(WebFinding(
+                check_id="WEB-CSRF-CORS_CREDENTIALS",
+                title="CORS Allows Credentials from Arbitrary Origin",
+                severity=Severity.HIGH,
+                cvss_score=8.1,
+                owasp="A01:2021",
+                affected_url=probe_endpoint,
+                description=(
+                    "The server reflects the attacker-controlled Origin header and permits "
+                    "credentialed requests. This enables cross-origin request forgery via CORS."
+                ),
+                evidence=(
+                    f"Access-Control-Allow-Origin: {acao}\n"
+                    f"Access-Control-Allow-Credentials: {acac}"
+                ),
+                remediation=(
+                    "Never reflect arbitrary Origins. Maintain an explicit whitelist of "
+                    "trusted origins and reject all others."
+                ),
+                references=["https://portswigger.net/web-security/cors"],
+            ))
+    except Exception:
+        pass
+
+    return findings
+
+
+async def _check_cookies_on_endpoints(
+    client: httpx.AsyncClient,
+    url: str,
+) -> list[WebFinding]:
+    """
+    Probe known auth endpoints to discover Set-Cookie headers, then
+    apply the standard cookie security checks to each response.
+    """
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+
+    for path, payload in _COOKIE_PROBE_ENDPOINTS:
+        endpoint = base + path
+        try:
+            resp = await client.post(
+                endpoint,
+                json=payload,
+                timeout=8,
+                follow_redirects=True,
+            )
+            cookie_headers = resp.headers.get_list("set-cookie")
+            if cookie_headers:
+                return _check_cookies(resp, endpoint)
+        except Exception:
+            continue
+
+    return []
 
 
 def _normalize_url(target: str) -> str:

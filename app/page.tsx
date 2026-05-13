@@ -10,6 +10,8 @@ export default function Home() {
 
   useEffect(() => {
     if (user?.role === 'admin') {
+      router.push('/admin')
+    } else if (user?.role === 'user') {
       router.push('/dashboard')
     } else if (user?.role === 'agent') {
       router.push('/agent-dashboard')

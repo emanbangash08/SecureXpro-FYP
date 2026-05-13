@@ -58,7 +58,7 @@ const onBlur = (e: React.FocusEvent<HTMLInputElement>) => {
 export default function RegisterPage() {
   const router = useRouter()
   const { register } = useAuth()
-  const [role, setRole]       = useState<'admin' | 'agent'>('agent')
+  const [role, setRole]       = useState<'user' | 'agent'>('user')
   const [fullName, setFullName] = useState('')
   const [email, setEmail]     = useState('')
   const [username, setUsername] = useState('')
@@ -171,12 +171,12 @@ export default function RegisterPage() {
             <label style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 10 }}>Role</label>
             <div style={{ display: 'flex', background: 'rgba(0,0,0,0.4)', borderRadius: 12, padding: 5, border: '1px solid rgba(255,255,255,0.04)' }}>
               {[
-                { id: 'admin', label: 'Admin',         icon: UserCog },
-                { id: 'agent', label: 'Security Agent', icon: Cpu    },
+                { id: 'user',  label: 'User',           icon: UserCog },
+                { id: 'agent', label: 'Security Agent',  icon: Cpu    },
               ].map(r => {
                 const active = role === r.id
                 return (
-                  <button key={r.id} type="button" onClick={() => setRole(r.id as 'admin' | 'agent')} style={{
+                  <button key={r.id} type="button" onClick={() => setRole(r.id as 'user' | 'agent')} style={{
                     flex: 1, padding: '10px 8px', borderRadius: 8, border: 'none',
                     background: active ? 'rgba(0,229,204,0.1)' : 'transparent',
                     color: active ? '#fff' : '#4a5568',
