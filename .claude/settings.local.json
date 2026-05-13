@@ -14,7 +14,9 @@
       "Bash(curl -s \"http://localhost:8000/\")",
       "Bash(mkdir -p \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\\\\app\\\\api\\\\v1\\\\[...path]\" 2>/dev/null; echo done)",
       "Bash(python create_admin.py)",
-      "Bash(venv\\\\Scripts\\\\python create_admin.py)"
+      "Bash(venv\\\\Scripts\\\\python create_admin.py)",
+      "PowerShell($s = Get-WmiObject win32_service -Filter \"name='MongoDB'\"; Write-Output \"PathName: $\\($s.PathName\\)\"; Write-Output \"StartName: $\\($s.StartName\\)\"; Write-Output \"State: $\\($s.State\\)\")",
+      "PowerShell($secret = [System.Web.HttpUtility]::UrlEncode\\([Convert]::ToBase64String\\([System.Security.Cryptography.RandomNumberGenerator]::GetBytes\\(48\\)\\)\\); Write-Output $secret)"
     ],
     "additionalDirectories": [
       "e:\\flutter projects\\FYP\\SecureXpro-FYP\\app\\api\\v1"

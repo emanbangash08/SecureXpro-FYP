@@ -5,6 +5,30 @@ function getToken(): string | null {
   return localStorage.getItem('access_token')
 }
 
+function formatDetail(detail: unknown, status: number): string {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map(err => {
+        if (err && typeof err === 'object') {
+          const e = err as { loc?: unknown[]; msg?: string; type?: string }
+          const field = Array.isArray(e.loc) ? e.loc.filter(p => p !== 'body').join('.') : ''
+          const msg = e.msg ?? e.type ?? 'invalid value'
+          return field ? `${field}: ${msg}` : msg
+        }
+        return String(err)
+      })
+      .join('; ')
+  }
+  if (detail && typeof detail === 'object') {
+    const d = detail as { msg?: string; message?: string }
+    if (d.msg) return d.msg
+    if (d.message) return d.message
+    try { return JSON.stringify(detail) } catch { /* fall through */ }
+  }
+  return `HTTP ${status}`
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -15,7 +39,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: 'Request failed' }))
-    throw new Error(body.detail ?? `HTTP ${res.status}`)
+    throw new Error(formatDetail(body.detail, res.status))
   }
 
   const text = await res.text()

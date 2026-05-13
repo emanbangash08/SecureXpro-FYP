@@ -1,8 +1,10 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   Play, RotateCcw, Network, Shield, Zap, FileText, AlertTriangle,
-  Server, Download, ChevronDown, ChevronUp, Wifi, Loader2,
+  Server, Download, ChevronDown, Wifi, Loader2, Check,
+  Target, Layers, Cpu, Globe, Crosshair, Radio, Activity,
+  Gauge, Terminal as TerminalIcon, History,
 } from 'lucide-react'
 import { useScanContext, PIPELINE, PHASE_TO_STAGE, type PipelineStageId } from '@/lib/scan-context'
 import type { ScanCreatePayload } from '@/lib/types'
@@ -12,39 +14,95 @@ const SEV_COLOR: Record<string, string> = {
 }
 
 const PIPELINE_ICONS: Record<PipelineStageId, React.ElementType> = {
-  recon:    Network,
-  vulnscan: Shield,
-  exploit:  Zap,
-  risk:     AlertTriangle,
-  report:   FileText,
+  recon: Network, vulnscan: Shield, exploit: Zap, risk: AlertTriangle, report: FileText,
+}
+
+const PIPELINE_DESC: Record<PipelineStageId, string> = {
+  recon:    'Host discovery & port enumeration',
+  vulnscan: 'CVE correlation via NVD database',
+  exploit:  'ExploitDB & Metasploit cross-ref',
+  risk:     'CVSS composite risk scoring',
+  report:   'Findings & remediation report',
+}
+
+// ── Smooth count-up ──────────────────────────────────────────────────────────
+
+function AnimatedNumber({ value, decimals = 1, duration = 900 }: { value: number; decimals?: number; duration?: number }) {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    let raf = 0
+    const start = performance.now()
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setN(value * eased)
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value, duration])
+  return <>{n.toFixed(decimals)}</>
 }
 
 // ── Network topology SVG ─────────────────────────────────────────────────────
 
 function NetworkTopology({ hosts }: { hosts: any[] }) {
+  const safe = hosts.length > 0 ? hosts : []
+  const span = Math.max(safe.length, 1)
+  const positions = useMemo(() => safe.map((_, i) => 40 + i * Math.floor(260 / span)), [safe, span])
   return (
-    <svg width="100%" viewBox="0 0 340 160" style={{ display: 'block' }}>
-      <circle cx="170" cy="24" r="14" fill="rgba(0,229,204,0.1)" stroke="#00e5cc" strokeWidth="1.5" />
-      <text x="170" y="29" textAnchor="middle" fill="#00e5cc" fontSize="9" fontFamily="monospace">RTR</text>
-      {hosts.map((h, i) => {
-        const x = 40 + i * Math.floor(260 / Math.max(hosts.length, 1))
-        const col = SEV_COLOR[h.severity ?? 'info']
-        return <line key={h.ip} x1="170" y1="38" x2={x} y2="100" stroke={col} strokeWidth="1" strokeDasharray="4 3" opacity="0.5" />
-      })}
-      {hosts.map((h, i) => {
-        const x = 40 + i * Math.floor(260 / Math.max(hosts.length, 1))
+    <svg width="100%" viewBox="0 0 340 180" style={{ display: 'block' }}>
+      <defs>
+        <radialGradient id="bgGlow" cx="50%" cy="0%" r="80%">
+          <stop offset="0%" stopColor="rgba(0,229,204,0.12)" />
+          <stop offset="100%" stopColor="rgba(0,229,204,0)" />
+        </radialGradient>
+        <filter id="nodeGlow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2.5" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+      <rect x="0" y="0" width="340" height="180" fill="url(#bgGlow)" />
+      <g style={{ animation: 'topo-pulse 2.4s ease-in-out infinite' }}>
+        <circle cx="170" cy="26" r="20" fill="rgba(0,229,204,0.05)" stroke="rgba(0,229,204,0.2)" strokeWidth="1" />
+        <circle cx="170" cy="26" r="14" fill="rgba(0,229,204,0.14)" stroke="#00e5cc" strokeWidth="1.5" filter="url(#nodeGlow)" />
+        <text x="170" y="30" textAnchor="middle" fill="#00e5cc" fontSize="9" fontFamily="monospace" fontWeight="700">RTR</text>
+      </g>
+      {safe.map((h, i) => {
+        const x = positions[i]
         const col = SEV_COLOR[h.severity ?? 'info']
         return (
-          <g key={h.ip}>
-            <circle cx={x} cy="112" r="18" fill={`${col}15`} stroke={col} strokeWidth="1.5" />
-            <text x={x} y="110" textAnchor="middle" fill={col} fontSize="8" fontFamily="monospace">SRV</text>
-            <text x={x} y="121" textAnchor="middle" fill={col} fontSize="7" fontFamily="monospace">{h.vulnCount ?? 0}V</text>
-            <text x={x} y="140" textAnchor="middle" fill="#4a5568" fontSize="7" fontFamily="monospace">{h.ip}</text>
+          <g key={`l-${h.ip}`}>
+            <line x1="170" y1="42" x2={x} y2="108" stroke={col} strokeWidth="1" strokeDasharray="3 3" opacity="0.3" />
+            <line x1="170" y1="42" x2={x} y2="108" stroke={col} strokeWidth="1.4" strokeDasharray="5 12"
+              style={{ animation: 'dash-flow 1.8s linear infinite', opacity: 0.9 }} />
+            <circle r="2" fill={col} filter="url(#nodeGlow)">
+              <animateMotion dur={`${2 + (i % 3) * 0.4}s`} repeatCount="indefinite" path={`M170,42 L${x},108`} />
+            </circle>
           </g>
         )
       })}
-      <rect x="148" y="138" width="44" height="16" rx="4" fill="rgba(255,51,85,0.1)" stroke="rgba(255,51,85,0.4)" strokeWidth="1" />
-      <text x="170" y="150" textAnchor="middle" fill="#ff3355" fontSize="8" fontFamily="monospace">ATTACKER</text>
+      {safe.map((h, i) => {
+        const x = positions[i]
+        const col = SEV_COLOR[h.severity ?? 'info']
+        const isCrit = h.severity === 'critical' || h.severity === 'high'
+        return (
+          <g key={h.ip}>
+            {isCrit && (
+              <circle cx={x} cy="120" r="22" fill="none" stroke={col} strokeWidth="1.5" opacity="0.5"
+                style={{ animation: 'topo-ring 2s ease-out infinite', transformOrigin: `${x}px 120px` }} />
+            )}
+            <circle cx={x} cy="120" r="18" fill={`${col}22`} stroke={col} strokeWidth="1.5" filter={isCrit ? 'url(#nodeGlow)' : undefined} />
+            <text x={x} y="118" textAnchor="middle" fill={col} fontSize="8" fontFamily="monospace" fontWeight="700">SRV</text>
+            <text x={x} y="129" textAnchor="middle" fill={col} fontSize="7" fontFamily="monospace">{h.vulnCount ?? 0}V</text>
+            <text x={x} y="148" textAnchor="middle" fill="#6a7b8a" fontSize="7" fontFamily="monospace">{h.ip}</text>
+          </g>
+        )
+      })}
+      <g style={{ animation: 'topo-pulse 1.6s ease-in-out infinite' }}>
+        <rect x="146" y="158" width="48" height="16" rx="4" fill="rgba(255,51,85,0.14)" stroke="rgba(255,51,85,0.5)" strokeWidth="1" filter="url(#nodeGlow)" />
+        <text x="170" y="170" textAnchor="middle" fill="#ff3355" fontSize="8" fontFamily="monospace" fontWeight="700">ATTACKER</text>
+      </g>
     </svg>
   )
 }
@@ -52,7 +110,7 @@ function NetworkTopology({ hosts }: { hosts: any[] }) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function NetworkScanPage() {
-  // ── Form / UI-only state (local — these don't need to persist) ──────────────
+  // Form / UI-only state
   const [ip,         setIp]         = useState('192.168.1.0/24')
   const [ports,      setPorts]      = useState('1-1000')
   const [intensity,  setIntensity]  = useState('normal')
@@ -63,7 +121,7 @@ export default function NetworkScanPage() {
   const [activeTab,    setActiveTab]    = useState<'hosts' | 'ports' | 'vulns' | 'report'>('hosts')
   const [expandedVuln, setExpandedVuln] = useState<string | null>(null)
 
-  // ── Global scan state from context (persists across navigation) ─────────────
+  // Global scan context
   const ctx = useScanContext()!
   const {
     scan, logs, vulns, report, recentScans,
@@ -74,12 +132,10 @@ export default function NetworkScanPage() {
 
   const termRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll terminal
   useEffect(() => {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight
   }, [logs])
 
-  // Deep-link: load scan from ?scanId= URL param on first mount
   useEffect(() => {
     if (typeof window === 'undefined') return
     const scanId = new URLSearchParams(window.location.search).get('scanId')
@@ -108,7 +164,6 @@ export default function NetworkScanPage() {
   const done   = scan?.status === 'completed'
   const failed = scan?.status === 'failed'
 
-  // Derived results
   const hosts: any[] = (scan?.recon_results ?? []).map(h => {
     const hostVulns = vulns.filter(v => v.affected_host === h.ip)
     const topSev = hostVulns.reduce((acc: string, v: any) => {
@@ -137,402 +192,1071 @@ export default function NetworkScanPage() {
     return 'pending'
   }
 
-  const Checkbox = ({ label, value, set }: { label: string; value: boolean; set: (v: boolean) => void }) => (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8, cursor: isScanning ? 'default' : 'pointer' }}
-      onClick={() => { if (!isScanning) set(!value) }}>
-      <div style={{
-        width: 15, height: 15, borderRadius: 4, flexShrink: 0,
-        background: value ? 'rgba(0,229,204,.12)' : 'rgba(255,255,255,.04)',
-        border: `1px solid ${value ? 'rgba(0,229,204,.5)' : 'rgba(255,255,255,.08)'}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        opacity: isScanning ? 0.4 : 1,
+  const activeStageMeta = PIPELINE.find(s => s.id === activeStageId)
+
+  const overallPct = useMemo(() => {
+    const total = PIPELINE.length
+    const doneCount = PIPELINE.filter(s => completedStages.has(s.id)).length
+    const activeProg = activeStageMeta ? (stageProgress[activeStageMeta.id] ?? 0) / 100 : 0
+    return Math.round(((doneCount + (activeStageMeta ? activeProg : 0)) / total) * 100)
+  }, [completedStages, activeStageMeta, stageProgress])
+
+  // Reusable: option pill (toggle chip)
+  const OptionPill = ({ label, value, set, hint }: { label: string; value: boolean; set: (v: boolean) => void; hint?: string }) => (
+    <button onClick={() => { if (!isScanning) set(!value) }} disabled={isScanning}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 7,
+        padding: '8px 13px', borderRadius: 999,
+        background: value ? 'rgba(0,229,204,.12)' : 'rgba(255,255,255,.025)',
+        border: `1px solid ${value ? 'rgba(0,229,204,.45)' : 'rgba(255,255,255,.07)'}`,
+        cursor: isScanning ? 'default' : 'pointer',
+        transition: 'all .18s ease', opacity: isScanning ? .45 : 1,
+        boxShadow: value ? '0 0 14px rgba(0,229,204,.18) inset' : 'none',
       }}>
-        {value && <div style={{ width: 7, height: 7, background: '#00e5cc', borderRadius: 2 }} />}
+      <div style={{
+        width: 14, height: 14, borderRadius: 4, flexShrink: 0,
+        background: value ? 'rgba(0,229,204,.25)' : 'transparent',
+        border: `1px solid ${value ? 'rgba(0,229,204,.7)' : 'rgba(255,255,255,.18)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {value && <Check size={9} color="#00e5cc" strokeWidth={3.5} style={{ animation: 'check-pop .2s ease' }} />}
       </div>
-      <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#6a7b8a' }}>{label}</span>
-    </label>
+      <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', color: value ? '#c8d3e0' : '#7a8a9a', fontWeight: 500, letterSpacing: '.2px' }}>
+        {label}
+      </span>
+      {hint && (
+        <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)', color: value ? 'rgba(0,229,204,.7)' : '#4a5568', letterSpacing: '.5px' }}>
+          {hint}
+        </span>
+      )}
+    </button>
   )
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1440, fontFamily: 'var(--font-ui)' }}>
+    <div style={{ padding: '32px 44px', maxWidth: 1680, margin: '0 auto', fontFamily: 'var(--font-ui)' }}>
 
-      {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <div style={{
-            width: 6, height: 6, borderRadius: '50%',
-            background: isScanning ? '#00e5cc' : done ? '#00cc88' : failed ? '#ff3355' : '#4a5568',
-            boxShadow: isScanning ? '0 0 8px #00e5cc' : 'none',
-            animation: isScanning ? 'pulse-dot 1s infinite' : 'none',
-          }} />
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, textTransform: 'uppercase', letterSpacing: '1.5px', color: isScanning ? '#00e5cc' : done ? '#00cc88' : failed ? '#ff3355' : '#4a5568' }}>
-            {isScanning ? `Running: ${activeStageId || 'initializing'}` : done ? 'Scan Complete' : failed ? 'Scan Failed' : 'Ready'}
-          </span>
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-display)', letterSpacing: '-.5px', marginBottom: 4 }}>
-          Network Vulnerability Scan
-        </h1>
-        <p style={{ fontSize: 11, color: '#4a5568', fontFamily: 'var(--font-mono)' }}>
-          Nmap Recon → NVD CVE Correlation → Exploit Analysis → CVSS Risk Scoring → Report
-        </p>
-      </div>
+      {/* ─────────────────────  HERO HEADER  ───────────────────── */}
+      <div style={{
+        marginBottom: 20, padding: '24px 30px', borderRadius: 18,
+        border: '1px solid rgba(255,255,255,.06)',
+        background: 'linear-gradient(135deg, rgba(0,229,204,0.05) 0%, rgba(77,158,255,0.04) 50%, rgba(167,139,250,0.05) 100%)',
+        position: 'relative', overflow: 'hidden', animation: 'fade-in-up .5s ease',
+      }}>
+        <div style={{ position: 'absolute', inset: 0,
+          background: 'radial-gradient(circle at 0% 0%, rgba(0,229,204,0.09), transparent 50%), radial-gradient(circle at 100% 100%, rgba(167,139,250,0.07), transparent 50%)',
+          pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(0,229,204,.5), transparent)' }} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '290px 1fr', gap: 16 }}>
-
-        {/* ── LEFT: Config ─────────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-          <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 14, padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 16 }}>
-              <Wifi size={13} color="#00e5cc" />
-              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#4a5568' }}>Scan Configuration</span>
-            </div>
-
-            {([
-              { label: 'Target IP / CIDR', value: ip, set: setIp, ph: '192.168.1.0/24', icon: '◎' },
-              { label: 'Port Range', value: ports, set: setPorts, ph: '1-1000', icon: '#' },
-            ] as const).map(({ label, value, set, ph, icon }) => (
-              <div key={label} style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.8px' }}>{label}</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontFamily: 'var(--font-mono)', fontSize: 12, color: '#4a5568' }}>{icon}</span>
-                  <input value={value} onChange={e => (set as any)(e.target.value)} placeholder={ph} disabled={isScanning}
-                    style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 8, padding: '9px 10px 9px 26px', color: '#e8edf5', fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none', boxSizing: 'border-box', opacity: isScanning ? .4 : 1 }}
-                    onFocus={e => e.currentTarget.style.borderColor = 'rgba(0,229,204,0.4)'}
-                    onBlur={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,.07)'}
-                  />
-                </div>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 380 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: 10,
+                background: 'linear-gradient(135deg, rgba(0,229,204,.2), rgba(0,229,204,.06))',
+                border: '1px solid rgba(0,229,204,.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 24px rgba(0,229,204,.18), 0 0 0 1px rgba(0,229,204,.1) inset',
+              }}>
+                <Network size={18} color="#00e5cc" strokeWidth={2.2} />
               </div>
-            ))}
-
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.8px' }}>Intensity</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
-                {[{ v: 'fast', label: 'Fast', hint: '-T3' }, { v: 'normal', label: 'Normal', hint: '-T4' }, { v: 'thorough', label: 'Full', hint: '-T5' }].map(({ v, label, hint }) => (
-                  <button key={v} onClick={() => setIntensity(v)} disabled={isScanning} style={{ padding: '7px 0', borderRadius: 7, fontSize: 11, fontFamily: 'var(--font-mono)', cursor: 'pointer', border: `1px solid ${intensity === v ? 'rgba(0,229,204,.4)' : 'rgba(255,255,255,.06)'}`, background: intensity === v ? 'rgba(0,229,204,.1)' : 'transparent', color: intensity === v ? '#00e5cc' : '#6a7b8a', transition: 'all .15s', opacity: isScanning ? .4 : 1 }}>
-                    <div>{label}</div>
-                    <div style={{ fontSize: 8, opacity: 0.6, marginTop: 1 }}>{hint}</div>
-                  </button>
-                ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', borderRadius: 999,
+                background: isScanning ? 'rgba(0,229,204,.1)' : done ? 'rgba(0,204,136,.1)' : failed ? 'rgba(255,51,85,.1)' : 'rgba(255,255,255,.04)',
+                border: `1px solid ${isScanning ? 'rgba(0,229,204,.35)' : done ? 'rgba(0,204,136,.35)' : failed ? 'rgba(255,51,85,.35)' : 'rgba(255,255,255,.1)'}` }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%',
+                  background: isScanning ? '#00e5cc' : done ? '#00cc88' : failed ? '#ff3355' : '#6a7b8a',
+                  boxShadow: isScanning ? '0 0 10px #00e5cc' : done ? '0 0 8px #00cc88' : 'none',
+                  animation: isScanning ? 'pulse-dot 1s infinite' : 'none' }} />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '1.6px', fontWeight: 600,
+                  color: isScanning ? '#00e5cc' : done ? '#00cc88' : failed ? '#ff3355' : '#8899aa' }}>
+                  {isScanning ? `Running · ${activeStageMeta?.label ?? 'init'}` : done ? 'Scan Complete' : failed ? 'Scan Failed' : 'Ready'}
+                </span>
               </div>
             </div>
-
-            <div style={{ borderTop: '1px solid rgba(255,255,255,.04)', paddingTop: 12, marginBottom: 14 }}>
-              <Checkbox label="OS Detection (-O)" value={osDetect}   set={setOsDetect} />
-              <Checkbox label="NSE Scripts (-sC)"  value={nseScripts} set={setNseScripts} />
-              <Checkbox label="Traceroute"          value={traceroute} set={setTraceroute} />
-              <Checkbox label="UDP Scan (-sU)"      value={udpScan}    set={setUdpScan} />
-            </div>
-
-            {error && (
-              <div style={{ padding: '8px 12px', borderRadius: 8, background: 'rgba(255,51,85,.08)', border: '1px solid rgba(255,51,85,.2)', color: '#ff3355', fontSize: 11, fontFamily: 'var(--font-mono)', marginBottom: 12 }}>
-                {error}
-              </div>
-            )}
-
-            <button
-              onClick={isScanning ? undefined : done || failed ? reset : handleLaunch}
-              disabled={launching}
-              style={{ width: '100%', padding: '12px', borderRadius: 9, fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-display)', cursor: isScanning ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: 'none', background: done || failed ? 'rgba(255,255,255,.06)' : 'linear-gradient(135deg,#00e5cc,#00b3a1)', color: done || failed ? '#8899aa' : '#04110e', boxShadow: done || failed ? 'none' : '0 4px 20px rgba(0,229,204,.28)', transition: 'all .2s' }}>
-              {launching
-                ? <><Loader2 size={14} style={{ animation: 'spin .7s linear infinite' }} /> Queuing...</>
-                : isScanning
-                  ? <><span style={{ width: 13, height: 13, border: '2px solid #07090f', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin .7s linear infinite' }} /> Scanning...</>
-                  : done || failed
-                    ? <><RotateCcw size={14} /> Run New Scan</>
-                    : <><Play size={14} /> Launch Network Scan</>}
-            </button>
+            <h1 style={{
+              fontSize: 28, fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-display)',
+              letterSpacing: '-.8px', marginBottom: 6, lineHeight: 1.15,
+              background: 'linear-gradient(135deg, #ffffff 0%, #b8c5d6 100%)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+            }}>
+              Network Vulnerability Assessment
+            </h1>
+            <p style={{ fontSize: 12, color: '#8899aa', fontFamily: 'var(--font-mono)', letterSpacing: '0.4px', lineHeight: 1.6 }}>
+              <span style={{ color: '#00e5cc' }}>Nmap Recon</span>
+              <span style={{ color: '#4a5568', margin: '0 7px' }}>→</span>
+              <span style={{ color: '#4d9eff' }}>NVD CVE</span>
+              <span style={{ color: '#4a5568', margin: '0 7px' }}>→</span>
+              <span style={{ color: '#ff6b35' }}>Exploits</span>
+              <span style={{ color: '#4a5568', margin: '0 7px' }}>→</span>
+              <span style={{ color: '#ffcc00' }}>CVSS Risk</span>
+              <span style={{ color: '#4a5568', margin: '0 7px' }}>→</span>
+              <span style={{ color: '#00cc88' }}>Report</span>
+            </p>
           </div>
 
-          {/* Risk score card */}
-          {done && rs && rs.total > 0 && (
-            <div style={{ background: 'rgba(255,51,85,.06)', border: '1px solid rgba(255,51,85,.18)', borderRadius: 14, padding: '18px 20px', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 0%, rgba(255,51,85,0.08), transparent 70%)', pointerEvents: 'none' }} />
-              <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.5px', color: SEV_COLOR[rs.overall_risk ?? 'info'], marginBottom: 6 }}>Composite Risk</div>
-              <div style={{ fontSize: 52, fontWeight: 900, color: SEV_COLOR[rs.overall_risk ?? 'info'], fontFamily: 'var(--font-display)', lineHeight: 1, textShadow: `0 0 40px ${SEV_COLOR[rs.overall_risk ?? 'info']}60`, letterSpacing: '-2px' }}>
-                {rs.max_cvss_score.toFixed(1)}
+          {isScanning && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, animation: 'fade-in .3s ease' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a', textTransform: 'uppercase', letterSpacing: '1.4px', fontWeight: 600 }}>Progress</div>
+                <div style={{ fontSize: 28, fontFamily: 'var(--font-display)', fontWeight: 800, color: '#00e5cc', lineHeight: 1, textShadow: '0 0 22px rgba(0,229,204,.5)' }}>{overallPct}%</div>
               </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: SEV_COLOR[rs.overall_risk ?? 'info'], fontFamily: 'var(--font-mono)', marginTop: 4, letterSpacing: '2px', textTransform: 'uppercase' }}>{rs.overall_risk} RISK</div>
-              <div style={{ height: 1, background: 'rgba(255,51,85,0.15)', margin: '12px 0' }} />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
-                {[['CRIT', rs.critical, '#ff3355'], ['HIGH', rs.high, '#ff6b35'], ['MED', rs.medium, '#ffcc00'], ['LOW', rs.low, '#00cc88']].map(([l, n, c]) => (
-                  <div key={l as string}>
-                    <div style={{ fontSize: 16, fontFamily: 'var(--font-display)', fontWeight: 800, color: c as string }}>{n as number}</div>
-                    <div style={{ fontSize: 8, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase' }}>{l as string}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recent scans — clickable to load */}
-          {recentScans.length > 0 && (
-            <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 14, padding: 16 }}>
-              <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px', color: '#4a5568', marginBottom: 10 }}>Recent Scans</div>
-              {recentScans.map(s => (
-                <div key={s.id}
-                  onClick={() => loadScan(s.id)}
-                  style={{ padding: '8px 10px', marginBottom: 3, borderRadius: 8, border: '1px solid transparent', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all .15s' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,229,204,.05)'; e.currentTarget.style.borderColor = 'rgba(0,229,204,.15)' }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent' }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: '#c8d3e0', fontFamily: 'var(--font-display)', fontWeight: 500, marginBottom: 2 }}>{s.target}</div>
-                    <div style={{ fontSize: 9, color: '#4a5568', fontFamily: 'var(--font-mono)' }}>{new Date(s.created_at).toLocaleDateString()}</div>
-                  </div>
-                  <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 10, fontFamily: 'var(--font-mono)', background: s.status === 'completed' ? 'rgba(0,204,136,.08)' : s.status === 'failed' ? 'rgba(255,51,85,.08)' : 'rgba(255,204,0,.08)', color: s.status === 'completed' ? '#00cc88' : s.status === 'failed' ? '#ff3355' : '#ffcc00', border: `1px solid ${s.status === 'completed' ? 'rgba(0,204,136,.25)' : s.status === 'failed' ? 'rgba(255,51,85,.25)' : 'rgba(255,204,0,.25)'}`, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    {s.status}
-                  </span>
-                </div>
-              ))}
+              <svg width="64" height="64" viewBox="0 0 64 64">
+                <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="4" />
+                <circle cx="32" cy="32" r="26" fill="none" stroke="#00e5cc" strokeWidth="4" strokeLinecap="round"
+                  strokeDasharray={`${(overallPct / 100) * 163.4} 163.4`}
+                  transform="rotate(-90 32 32)"
+                  style={{ filter: 'drop-shadow(0 0 8px rgba(0,229,204,.6))', transition: 'stroke-dasharray .4s ease' }} />
+              </svg>
             </div>
           )}
         </div>
+      </div>
 
-        {/* ── RIGHT: Pipeline + Terminal + Results ───────────────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* ─────────────────────  HORIZONTAL CONFIG BAR  ───────────────────── */}
+      <div style={{
+        marginBottom: 18, padding: '20px 26px', borderRadius: 16,
+        background: 'linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))',
+        border: '1px solid rgba(255,255,255,.06)',
+        position: 'relative', overflow: 'hidden',
+        animation: 'fade-in-up .45s ease',
+      }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(0,229,204,.3), transparent)' }} />
 
-          {/* Pipeline */}
-          <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 14, padding: '18px 20px' }}>
-            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', color: '#4a5568', marginBottom: 16 }}>Scan Pipeline</div>
-            <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-              {PIPELINE.map((s, i) => {
-                const status = getStageStatus(s.id)
-                const Icon = PIPELINE_ICONS[s.id]
-                const isLast = i === PIPELINE.length - 1
-                const prog = stageProgress[s.id] ?? 0
+        {/* ROW 1: inputs + launch */}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          {/* Target */}
+          <div style={{ flex: '2 1 280px', minWidth: 240 }}>
+            <label style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a', display: 'block',
+              marginBottom: 7, textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: 600 }}>
+              Target IP / CIDR
+            </label>
+            <div style={{ position: 'relative' }}>
+              <Target size={14} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#6a7b8a' }} />
+              <input value={ip} onChange={e => setIp(e.target.value)} placeholder="192.168.1.0/24 or 192.168.1.254" disabled={isScanning}
+                style={{
+                  width: '100%', background: 'rgba(0,0,0,0.4)',
+                  border: '1px solid rgba(255,255,255,.08)', borderRadius: 10,
+                  padding: '13px 14px 13px 38px',
+                  color: '#e8edf5', fontFamily: 'var(--font-mono)', fontSize: 13, outline: 'none',
+                  boxSizing: 'border-box', opacity: isScanning ? .45 : 1, transition: 'all .18s ease',
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = 'rgba(0,229,204,0.5)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.1)' }}
+                onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,.08)'; e.currentTarget.style.boxShadow = 'none' }}
+              />
+            </div>
+          </div>
+
+          {/* Ports */}
+          <div style={{ flex: '1 1 160px', minWidth: 140 }}>
+            <label style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a', display: 'block',
+              marginBottom: 7, textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: 600 }}>
+              Port Range
+            </label>
+            <div style={{ position: 'relative' }}>
+              <Layers size={14} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#6a7b8a' }} />
+              <input value={ports} onChange={e => setPorts(e.target.value)} placeholder="1-1000" disabled={isScanning}
+                style={{
+                  width: '100%', background: 'rgba(0,0,0,0.4)',
+                  border: '1px solid rgba(255,255,255,.08)', borderRadius: 10,
+                  padding: '13px 14px 13px 38px',
+                  color: '#e8edf5', fontFamily: 'var(--font-mono)', fontSize: 13, outline: 'none',
+                  boxSizing: 'border-box', opacity: isScanning ? .45 : 1, transition: 'all .18s ease',
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = 'rgba(0,229,204,0.5)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.1)' }}
+                onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,.08)'; e.currentTarget.style.boxShadow = 'none' }}
+              />
+            </div>
+          </div>
+
+          {/* Intensity segmented control */}
+          <div style={{ flex: '1 1 220px', minWidth: 200 }}>
+            <label style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a', display: 'block',
+              marginBottom: 7, textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: 600 }}>
+              Intensity
+            </label>
+            <div style={{ display: 'flex', gap: 0, padding: 3, borderRadius: 10,
+              background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,.08)' }}>
+              {[{ v: 'fast', label: 'Fast', hint: 'T3' }, { v: 'normal', label: 'Normal', hint: 'T4' }, { v: 'thorough', label: 'Full', hint: 'T5' }].map(({ v, label, hint }) => {
+                const sel = intensity === v
                 return (
-                  <div key={s.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-                    {!isLast && (
-                      <div style={{ position: 'absolute', top: 20, left: '50%', width: '100%', height: 2, zIndex: 0, overflow: 'hidden', background: 'rgba(255,255,255,.05)' }}>
-                        <div style={{ height: '100%', background: s.color, width: status === 'done' ? '100%' : status === 'active' ? `${prog}%` : '0%', transition: 'width .5s ease', boxShadow: status !== 'pending' ? `0 0 8px ${s.color}60` : 'none' }} />
-                      </div>
-                    )}
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', zIndex: 1, flexShrink: 0, background: status === 'done' ? `${s.color}18` : status === 'active' ? `${s.color}14` : 'rgba(255,255,255,.03)', border: `2px solid ${status !== 'pending' ? s.color : 'rgba(255,255,255,.08)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: status === 'active' ? `0 0 18px ${s.color}50` : 'none', transition: 'all .4s', animation: status === 'active' ? 'ring-pulse 1.5s infinite' : 'none' }}>
-                      {status === 'done'
-                        ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={s.color} strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
-                        : <Icon size={15} color={status !== 'pending' ? s.color : '#4a5568'} />}
-                    </div>
-                    <div style={{ marginTop: 8, textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, fontFamily: 'var(--font-display)', fontWeight: 600, color: status === 'done' ? s.color : status === 'active' ? '#e8edf5' : '#4a5568', marginBottom: 1 }}>{s.label}</div>
-                      <div style={{ fontSize: 8, fontFamily: 'var(--font-mono)', color: '#3a4a5a' }}>{s.est}</div>
-                    </div>
-                    {status === 'active' && (
-                      <div style={{ marginTop: 4, fontSize: 9, fontFamily: 'var(--font-mono)', color: s.color, animation: 'blink 1s infinite' }}>{prog}%</div>
-                    )}
-                  </div>
+                  <button key={v} onClick={() => setIntensity(v)} disabled={isScanning} style={{
+                    flex: 1, padding: '9px 0', borderRadius: 7, fontSize: 11, fontFamily: 'var(--font-mono)',
+                    cursor: isScanning ? 'default' : 'pointer', border: 'none',
+                    background: sel ? 'linear-gradient(135deg, rgba(0,229,204,.22), rgba(0,229,204,.08))' : 'transparent',
+                    color: sel ? '#00e5cc' : '#7a8a9a',
+                    transition: 'all .18s ease', opacity: isScanning ? .45 : 1,
+                    boxShadow: sel ? '0 2px 10px rgba(0,229,204,.18), 0 0 0 1px rgba(0,229,204,.3) inset' : 'none',
+                    fontWeight: sel ? 700 : 500, lineHeight: 1.2,
+                  }}>
+                    <div>{label}</div>
+                    <div style={{ fontSize: 9, opacity: 0.6, marginTop: 2 }}>-{hint}</div>
+                  </button>
                 )
               })}
             </div>
           </div>
 
-          {/* Terminal */}
-          <div style={{ background: '#020408', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, overflow: 'hidden' }}>
-            <div style={{ padding: '10px 16px', background: 'rgba(255,255,255,.025)', borderBottom: '1px solid rgba(255,255,255,.05)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {['#ff5f57', '#febc2e', '#28c840'].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: '50%', background: c }} />)}
-              </div>
-              <span style={{ marginLeft: 8, fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>securex-engine — network-scan</span>
-              {isScanning && (
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, fontFamily: 'var(--font-mono)', color: '#00e5cc' }}>
-                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#00e5cc', animation: 'pulse-dot 1s infinite' }} /> LIVE
-                </div>
+          {/* Launch button */}
+          <div style={{ flex: '0 0 auto' }}>
+            <button
+              onClick={isScanning ? undefined : done || failed ? reset : handleLaunch}
+              disabled={launching}
+              onMouseEnter={e => { if (!isScanning && !done && !failed) e.currentTarget.style.transform = 'translateY(-1px)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)' }}
+              style={{
+                padding: '14px 28px', borderRadius: 11,
+                fontSize: 13.5, fontWeight: 700, fontFamily: 'var(--font-display)',
+                cursor: isScanning ? 'default' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                border: 'none',
+                background: done || failed ? 'rgba(255,255,255,.06)' : 'linear-gradient(135deg,#00e5cc,#00b3a1)',
+                color: done || failed ? '#c8d3e0' : '#04110e',
+                boxShadow: done || failed ? 'none' : '0 6px 28px rgba(0,229,204,.4), 0 0 0 1px rgba(0,229,204,.5) inset',
+                transition: 'all .2s ease', position: 'relative', overflow: 'hidden',
+                minWidth: 180, letterSpacing: '.2px',
+              }}>
+              {!done && !failed && !isScanning && !launching && (
+                <div style={{ position: 'absolute', inset: 0,
+                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent)',
+                  backgroundSize: '200% 100%', animation: 'shimmer 2.5s linear infinite', pointerEvents: 'none' }} />
               )}
+              <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 9 }}>
+                {launching
+                  ? <><Loader2 size={15} style={{ animation: 'spin .7s linear infinite' }} /> Queuing...</>
+                  : isScanning
+                    ? <><span style={{ width: 14, height: 14, border: '2px solid #07090f', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin .7s linear infinite' }} /> Scanning...</>
+                    : done || failed
+                      ? <><RotateCcw size={15} /> New Scan</>
+                      : <><Play size={15} fill="#04110e" /> Launch Scan</>}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* ROW 2: option pills */}
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,.05)',
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a',
+            textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: 600 }}>
+            Scan Options
+          </span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <OptionPill label="OS Detection"  hint="-O"  value={osDetect}   set={setOsDetect} />
+            <OptionPill label="NSE Scripts"   hint="-sC" value={nseScripts} set={setNseScripts} />
+            <OptionPill label="Traceroute"               value={traceroute} set={setTraceroute} />
+            <OptionPill label="UDP Scan"      hint="-sU" value={udpScan}    set={setUdpScan} />
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ marginTop: 14,
+            padding: '10px 14px', borderRadius: 9,
+            background: 'rgba(255,51,85,.08)', border: '1px solid rgba(255,51,85,.25)',
+            color: '#ff3355', fontSize: 11.5, fontFamily: 'var(--font-mono)',
+            display: 'flex', alignItems: 'center', gap: 9, animation: 'shake .3s ease',
+          }}>
+            <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ─────────────────────  ENGINE: PIPELINE + TERMINAL  ───────────────────── */}
+      <div style={{
+        marginBottom: 18, borderRadius: 16,
+        background: 'linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))',
+        border: '1px solid rgba(255,255,255,.06)',
+        position: 'relative', overflow: 'hidden',
+        animation: 'fade-in-up .5s ease',
+      }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(0,229,204,.3), transparent)' }} />
+
+        {/* Header bar with two labels (split header) */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1px 1fr',
+          padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,.05)',
+          background: 'rgba(255,255,255,.015)', alignItems: 'center',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingRight: 24 }}>
+            <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(0,229,204,.1)',
+              border: '1px solid rgba(0,229,204,.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Cpu size={13} color="#00e5cc" />
             </div>
-            <div ref={termRef} style={{ padding: '14px 18px', minHeight: 180, maxHeight: 280, overflowY: 'auto', fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.8 }}>
+            <div>
+              <div style={{ fontSize: 13, fontFamily: 'var(--font-display)', color: '#e8edf5', fontWeight: 700, letterSpacing: '-.2px' }}>
+                Scan Pipeline
+              </div>
+              <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#6a7b8a', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 2 }}>
+                5-stage assessment workflow
+              </div>
+            </div>
+          </div>
+          <div style={{ height: 36, width: 1, background: 'rgba(255,255,255,.06)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingLeft: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(167,139,250,.1)',
+                border: '1px solid rgba(167,139,250,.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <TerminalIcon size={13} color="#a78bfa" />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontFamily: 'var(--font-display)', color: '#e8edf5', fontWeight: 700, letterSpacing: '-.2px' }}>
+                  Engine Log
+                </div>
+                <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#6a7b8a', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 2 }}>
+                  Real-time command output
+                </div>
+              </div>
+            </div>
+            {isScanning && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 10, fontFamily: 'var(--font-mono)',
+                color: '#00e5cc', padding: '5px 11px', borderRadius: 999,
+                background: 'rgba(0,229,204,.08)', border: '1px solid rgba(0,229,204,.25)' }}>
+                <Radio size={11} style={{ animation: 'pulse-dot 1s infinite' }} />
+                <span style={{ letterSpacing: '1.2px', fontWeight: 600 }}>LIVE</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Body: 2-column split */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr', minHeight: 480 }}>
+
+          {/* ── LEFT: Vertical pipeline timeline ── */}
+          <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {PIPELINE.map((s, i) => {
+              const status = getStageStatus(s.id)
+              const Icon = PIPELINE_ICONS[s.id]
+              const prog = stageProgress[s.id] ?? 0
+              const isLast = i === PIPELINE.length - 1
+              const nextStatus = !isLast ? getStageStatus(PIPELINE[i + 1].id) : null
+              const connectorActive = status === 'done' || (status === 'active' && nextStatus !== 'pending')
+              return (
+                <div key={s.id} style={{ position: 'relative', display: 'flex', gap: 14, alignItems: 'stretch' }}>
+                  {/* Left rail */}
+                  <div style={{ position: 'relative', width: 40, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+                      background: status === 'done'
+                        ? `linear-gradient(135deg, ${s.color}30, ${s.color}10)`
+                        : status === 'active'
+                          ? `linear-gradient(135deg, ${s.color}28, ${s.color}08)`
+                          : 'rgba(255,255,255,.03)',
+                      border: `2px solid ${status === 'done' ? s.color : status === 'active' ? s.color : 'rgba(255,255,255,.08)'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: status === 'active' ? `0 0 22px ${s.color}66, 0 0 0 5px ${s.color}10` : status === 'done' ? `0 0 12px ${s.color}45` : 'none',
+                      transition: 'all .4s ease', zIndex: 2, position: 'relative',
+                    }}>
+                      {status === 'done'
+                        ? <Check size={17} color={s.color} strokeWidth={3} style={{ animation: 'check-pop .35s ease' }} />
+                        : <Icon size={16} color={status !== 'pending' ? s.color : '#5a6a7a'}
+                            style={{ animation: status === 'active' ? 'icon-bob 1.4s ease-in-out infinite' : 'none' }} />}
+                      {status === 'active' && (
+                        <span style={{ position: 'absolute', inset: -4, borderRadius: '50%',
+                          border: `2px solid ${s.color}`, opacity: 0.4,
+                          animation: 'pulse-ring 1.8s ease-out infinite' }} />
+                      )}
+                    </div>
+                    {!isLast && (
+                      <div style={{ flex: 1, width: 2, marginTop: 5, position: 'relative',
+                        background: 'rgba(255,255,255,.05)', borderRadius: 2, minHeight: 14, overflow: 'hidden' }}>
+                        <div style={{
+                          position: 'absolute', top: 0, left: 0, right: 0,
+                          height: connectorActive ? '100%' : '0%',
+                          background: status === 'done'
+                            ? `linear-gradient(180deg, ${s.color}, ${PIPELINE[i + 1].color})`
+                            : s.color,
+                          transition: 'height .5s ease',
+                          boxShadow: connectorActive ? `0 0 8px ${s.color}90` : 'none',
+                        }} />
+                        {status === 'active' && (
+                          <div style={{ position: 'absolute', left: 0, right: 0, height: '40%',
+                            background: 'linear-gradient(180deg, transparent, rgba(255,255,255,.5), transparent)',
+                            animation: 'rail-beam 1.5s linear infinite' }} />
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Stage row */}
+                  <div style={{
+                    flex: 1, padding: '12px 16px', borderRadius: 11,
+                    background: status === 'done'
+                      ? `linear-gradient(135deg, ${s.color}10, ${s.color}02)`
+                      : status === 'active'
+                        ? `linear-gradient(135deg, ${s.color}18, ${s.color}04)`
+                        : 'rgba(255,255,255,.02)',
+                    border: `1px solid ${status === 'done' ? `${s.color}38` : status === 'active' ? `${s.color}58` : 'rgba(255,255,255,.06)'}`,
+                    boxShadow: status === 'active' ? `0 4px 22px ${s.color}22` : 'none',
+                    transition: 'all .3s ease', position: 'relative', overflow: 'hidden',
+                  }}>
+                    {status === 'active' && (
+                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+                        background: `linear-gradient(90deg, transparent, ${s.color}, transparent)`,
+                        animation: 'edge-shimmer 2s linear infinite' }} />
+                    )}
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                          <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)',
+                            color: status === 'pending' ? '#3a4a5a' : `${s.color}cc`,
+                            letterSpacing: '1.3px', fontWeight: 700, textTransform: 'uppercase' }}>
+                            Stage {String(i + 1).padStart(2, '0')}
+                          </span>
+                          {status === 'done' && (
+                            <span style={{ fontSize: 8.5, padding: '2px 7px', borderRadius: 999,
+                              background: `${s.color}1c`, color: s.color, border: `1px solid ${s.color}40`,
+                              fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '.7px' }}>
+                              ✓ DONE
+                            </span>
+                          )}
+                          {status === 'active' && (
+                            <span style={{ fontSize: 8.5, padding: '2px 7px', borderRadius: 999,
+                              background: `${s.color}1c`, color: s.color, border: `1px solid ${s.color}40`,
+                              fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '.7px',
+                              display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ width: 4, height: 4, borderRadius: '50%', background: s.color, animation: 'pulse-dot 1s infinite' }} />
+                              RUNNING
+                            </span>
+                          )}
+                        </div>
+                        <div style={{
+                          fontSize: 15, fontFamily: 'var(--font-display)', fontWeight: 700,
+                          color: status === 'done' ? s.color : status === 'active' ? '#ffffff' : '#8899aa',
+                          letterSpacing: '-.3px', marginBottom: 3,
+                        }}>{s.label}</div>
+                        <div style={{
+                          fontSize: 11, fontFamily: 'var(--font-mono)',
+                          color: status === 'pending' ? '#5a6a7a' : '#8899aa', lineHeight: 1.5,
+                        }}>{PIPELINE_DESC[s.id]}</div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        {(status === 'active' || status === 'done') && (
+                          <div style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 800,
+                            color: s.color, lineHeight: 1, letterSpacing: '-.6px',
+                            textShadow: status === 'active' ? `0 0 12px ${s.color}66` : 'none' }}>
+                            {status === 'done' ? '100' : prog}<span style={{ fontSize: 12, opacity: 0.65 }}>%</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div style={{ height: 3, background: 'rgba(255,255,255,.05)', borderRadius: 3, overflow: 'hidden', position: 'relative' }}>
+                      <div style={{
+                        height: '100%',
+                        width: status === 'done' ? '100%' : status === 'active' ? `${prog}%` : '0%',
+                        background: status !== 'pending' ? `linear-gradient(90deg, ${s.color}, ${s.color}cc)` : 'transparent',
+                        borderRadius: 3,
+                        boxShadow: status !== 'pending' ? `0 0 8px ${s.color}90` : 'none',
+                        transition: 'width .5s ease',
+                      }} />
+                      {status === 'active' && (
+                        <div style={{ position: 'absolute', top: 0, bottom: 0, width: '40%',
+                          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent)',
+                          animation: 'pipe-beam 1.5s linear infinite' }} />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* divider */}
+          <div style={{ background: 'rgba(255,255,255,.05)' }} />
+
+          {/* ── RIGHT: Terminal ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', background: '#020408', position: 'relative' }}>
+            {/* Mac-style title bar */}
+            <div style={{ padding: '12px 20px', background: 'rgba(255,255,255,.025)',
+              borderBottom: '1px solid rgba(255,255,255,.05)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {['#ff5f57', '#febc2e', '#28c840'].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: '50%', background: c, boxShadow: `0 0 6px ${c}55` }} />)}
+              </div>
+              <span style={{ marginLeft: 10, fontSize: 10.5, fontFamily: 'var(--font-mono)', color: '#7a8a9a' }}>
+                securex-engine — network-scan
+              </span>
+            </div>
+            <div ref={termRef} style={{
+              flex: 1, padding: '16px 22px', overflowY: 'auto', minHeight: 380, maxHeight: 480,
+              fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.85, position: 'relative',
+            }}>
+              {isScanning && (
+                <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
+                  background: 'linear-gradient(180deg, transparent 0%, rgba(0,229,204,0.04) 50%, transparent 100%)',
+                  height: 80, animation: 'term-scan 4s linear infinite' }} />
+              )}
               {logs.length === 0 && !isScanning && (
-                <span style={{ color: '#3a4a5a' }}>securex@engine:~$ <span style={{ color: '#4a5568' }}>Awaiting scan configuration...</span></span>
+                <span style={{ color: '#3a4a5a' }}>securex@engine:~$ <span style={{ color: '#5a6a7a' }}>Awaiting scan configuration...</span></span>
               )}
               {logs.map((l, i) => {
-                const col = l.level === 'cmd' ? '#00e5cc' : l.level === 'success' ? '#00cc88' : l.level === 'error' ? '#ff3355' : l.level === 'warning' ? '#ff6b35' : '#5a6a7a'
-                return <div key={l.id ?? i} style={{ color: col }}>{l.message}</div>
+                const col = l.level === 'cmd' ? '#00e5cc' : l.level === 'success' ? '#00cc88' : l.level === 'error' ? '#ff3355' : l.level === 'warning' ? '#ff6b35' : '#8899aa'
+                const prefix = l.level === 'cmd' ? '$' : l.level === 'success' ? '✓' : l.level === 'error' ? '✗' : l.level === 'warning' ? '!' : '·'
+                return (
+                  <div key={l.id ?? i} style={{ color: col, display: 'flex', gap: 10, animation: 'slide-in-up .2s ease both' }}>
+                    <span style={{ color: `${col}a0`, flexShrink: 0, width: 12 }}>{prefix}</span>
+                    <span style={{ flex: 1, wordBreak: 'break-word' }}>{l.message}</span>
+                  </div>
+                )
               })}
               {isScanning && <span style={{ color: '#00e5cc', animation: 'blink 1s step-end infinite' }}>█</span>}
             </div>
           </div>
+        </div>
 
-          {/* Results */}
-          {done && report && (
-            <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 14, overflow: 'hidden' }}>
-              {/* Summary bar */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', borderBottom: '1px solid rgba(255,255,255,.05)' }}>
-                {[
-                  [report.summary.hosts_discovered, 'Hosts Found',     '#4d9eff'],
-                  [report.summary.open_ports,        'Open Ports',      '#00e5cc'],
-                  [report.summary.total_vulns,       'Vulnerabilities', '#ffcc00'],
-                  [report.summary.exploit_count,     'Exploits Found',  '#ff3355'],
-                ].map(([val, label, col]) => (
-                  <div key={label as string} style={{ padding: '14px 16px', borderRight: '1px solid rgba(255,255,255,.04)', textAlign: 'center' }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, color: col as string, fontFamily: 'var(--font-display)', lineHeight: 1, textShadow: `0 0 16px ${col as string}40` }}>{val as number}</div>
-                    <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#4a5568', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label as string}</div>
+        {/* Active stage strip at the bottom */}
+        {isScanning && activeStageMeta && (
+          <div style={{
+            padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,.05)',
+            background: `linear-gradient(90deg, ${activeStageMeta.color}10, transparent 60%)`,
+            display: 'flex', alignItems: 'center', gap: 14,
+            animation: 'fade-in .3s ease',
+          }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: 8,
+              background: `${activeStageMeta.color}26`,
+              border: `1px solid ${activeStageMeta.color}60`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, animation: 'pulse-soft 1.5s ease-in-out infinite',
+            }}>
+              <Loader2 size={14} color={activeStageMeta.color} style={{ animation: 'spin 1.2s linear infinite' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 700, color: activeStageMeta.color, marginBottom: 2 }}>
+                Currently running · {activeStageMeta.label}
+              </div>
+              <div style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: '#8899aa' }}>
+                {PIPELINE_DESC[activeStageMeta.id]}
+              </div>
+            </div>
+            <div style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 800, color: activeStageMeta.color, letterSpacing: '-.6px' }}>
+              {stageProgress[activeStageMeta.id] ?? 0}<span style={{ fontSize: 13, opacity: 0.65 }}>%</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─────────────────────  RISK SCORE STRIP (when done)  ───────────────────── */}
+      {done && rs && rs.total > 0 && (
+        <div style={{
+          marginBottom: 18, padding: '26px 32px', borderRadius: 16,
+          background: 'linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01))',
+          border: '1px solid rgba(255,255,255,.07)',
+          position: 'relative', overflow: 'hidden',
+          animation: 'fade-in-up .5s ease',
+        }}>
+          {/* Subtle accent strip on the left edge (replaces full backdrop glow) */}
+          <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 3,
+            background: SEV_COLOR[rs.overall_risk ?? 'info'] }} />
+
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 40, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 22, minWidth: 280 }}>
+              <div style={{ width: 52, height: 52, borderRadius: 12,
+                background: `${SEV_COLOR[rs.overall_risk ?? 'info']}14`,
+                border: `1px solid ${SEV_COLOR[rs.overall_risk ?? 'info']}38`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Gauge size={24} color={SEV_COLOR[rs.overall_risk ?? 'info']} strokeWidth={2} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase',
+                  letterSpacing: '1.8px', color: '#7a8a9a', marginBottom: 6, fontWeight: 600 }}>
+                  Composite Risk Score
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+                  <div style={{
+                    fontSize: 52, fontWeight: 700, color: '#ffffff',
+                    fontFamily: 'var(--font-display)', lineHeight: 1, letterSpacing: '-2.5px',
+                  }}>
+                    <AnimatedNumber value={rs.max_cvss_score} decimals={1} />
+                    <span style={{ fontSize: 18, color: '#5a6a7a', fontWeight: 500, marginLeft: 4, letterSpacing: '-.5px' }}>/10</span>
                   </div>
-                ))}
+                  <div style={{
+                    fontSize: 10, fontWeight: 700, color: SEV_COLOR[rs.overall_risk ?? 'info'],
+                    fontFamily: 'var(--font-mono)', letterSpacing: '1.8px', textTransform: 'uppercase',
+                    padding: '4px 10px', borderRadius: 999,
+                    background: `${SEV_COLOR[rs.overall_risk ?? 'info']}14`,
+                    border: `1px solid ${SEV_COLOR[rs.overall_risk ?? 'info']}40`,
+                  }}>
+                    {rs.overall_risk}
+                  </div>
+                </div>
               </div>
+            </div>
 
-              {/* Tabs */}
-              <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,.05)', padding: '0 18px', gap: 4 }}>
-                {(['hosts', 'ports', 'vulns', 'report'] as const).map(t => (
-                  <button key={t} onClick={() => setActiveTab(t)} style={{ padding: '11px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${activeTab === t ? '#00e5cc' : 'transparent'}`, color: activeTab === t ? '#00e5cc' : '#4a5568', fontSize: 10, fontFamily: 'var(--font-mono)', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '1px', transition: 'color .2s' }}>
-                    {t === 'hosts' ? 'Hosts Map' : t === 'ports' ? 'Open Ports' : t === 'vulns' ? `Vulnerabilities (${vulns.length})` : 'Report'}
-                  </button>
-                ))}
-              </div>
+            <div style={{ flex: 1, minWidth: 360, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+              {[['Critical', rs.critical, '#ff3355'], ['High', rs.high, '#ff6b35'], ['Medium', rs.medium, '#ffcc00'], ['Low', rs.low, '#00cc88']].map(([l, n, c], i) => (
+                <div key={l as string} style={{
+                  padding: '14px 16px', borderRadius: 11,
+                  background: 'rgba(255,255,255,.025)',
+                  border: '1px solid rgba(255,255,255,.06)',
+                  position: 'relative', overflow: 'hidden',
+                  animation: `fade-in-up .4s ease both`, animationDelay: `${i * 60}ms`,
+                }}>
+                  {/* Vertical color rail */}
+                  <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 2, background: c as string, opacity: 0.7 }} />
+                  <div style={{ fontSize: 28, fontFamily: 'var(--font-display)', fontWeight: 700,
+                    color: '#ffffff', lineHeight: 1, letterSpacing: '-.8px' }}>
+                    {n as number}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: c as string }} />
+                    <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#7a8a9a',
+                      textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>{l as string}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
-              <div style={{ padding: '16px 18px' }}>
+      {/* ─────────────────────  RESULTS PANEL  ───────────────────── */}
+      {done && report && (
+        <div style={{
+          marginBottom: 18,
+          background: 'linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015))',
+          border: '1px solid rgba(255,255,255,.06)', borderRadius: 16, overflow: 'hidden',
+          animation: 'fade-in-up .5s ease',
+        }}>
+          {/* Summary tiles */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', borderBottom: '1px solid rgba(255,255,255,.05)' }}>
+            {[
+              [report.summary.hosts_discovered, 'Hosts Found',     '#4d9eff', Globe],
+              [report.summary.open_ports,        'Open Ports',      '#00e5cc', Layers],
+              [report.summary.total_vulns,       'Vulnerabilities', '#ffcc00', AlertTriangle],
+              [report.summary.exploit_count,     'Exploits Found',  '#ff3355', Crosshair],
+            ].map(([val, label, col, Ic], i) => {
+              const IcComp = Ic as React.ElementType
+              return (
+                <div key={label as string} style={{
+                  padding: '22px 26px', borderRight: '1px solid rgba(255,255,255,.04)',
+                  position: 'relative', overflow: 'hidden',
+                  animation: 'fade-in-up .4s ease both', animationDelay: `${i * 70}ms`,
+                }}>
+                  <div style={{ position: 'absolute', top: 10, right: 12, opacity: 0.07 }}>
+                    <IcComp size={62} color={col as string} />
+                  </div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: col as string, fontFamily: 'var(--font-display)', lineHeight: 1,
+                    textShadow: `0 0 22px ${col as string}55`, position: 'relative', letterSpacing: '-1.2px' }}>
+                    {val as number}
+                  </div>
+                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#7a8a9a',
+                    marginTop: 8, textTransform: 'uppercase', letterSpacing: '1.1px', position: 'relative', fontWeight: 600 }}>
+                    {label as string}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
 
-                {/* Hosts tab */}
-                {activeTab === 'hosts' && (
-                  hosts.length === 0
-                    ? <div style={{ color: '#4a5568', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'center', padding: 24 }}>No hosts discovered.</div>
-                    : <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px', gap: 16 }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {hosts.map(h => (
-                            <div key={h.ip} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px', borderRadius: 10, background: 'rgba(255,255,255,.02)', border: `1px solid ${SEV_COLOR[h.severity]}22` }}>
-                              <Server size={16} color={SEV_COLOR[h.severity]} style={{ flexShrink: 0 }} />
-                              <div style={{ flex: 1 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#c8d3e0', fontWeight: 600 }}>{h.ip}</span>
-                                  {h.hostname && <span style={{ fontSize: 9, color: '#4a5568', fontFamily: 'var(--font-mono)' }}>{h.hostname}</span>}
-                                </div>
-                                <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>
-                                  {h.os || 'OS unknown'} · {h.ports?.length ?? 0} open port(s)
-                                </div>
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 800, color: SEV_COLOR[h.severity] }}>{h.vulnCount}</span>
-                                <span style={{ fontSize: 8, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase' }}>vulns</span>
-                              </div>
-                              <span style={{ fontSize: 9, padding: '3px 9px', borderRadius: 12, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.5px', background: `${SEV_COLOR[h.severity]}12`, color: SEV_COLOR[h.severity], border: `1px solid ${SEV_COLOR[h.severity]}30`, flexShrink: 0 }}>
-                                {h.severity}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 10, padding: 10 }}>
-                          <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Network Map</div>
-                          <NetworkTopology hosts={hosts} />
-                        </div>
-                      </div>
+          {/* Tabs */}
+          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,.05)', padding: '0 24px', gap: 6 }}>
+            {(['hosts', 'ports', 'vulns', 'report'] as const).map(t => (
+              <button key={t} onClick={() => setActiveTab(t)} style={{
+                padding: '14px 18px', background: 'none', border: 'none',
+                borderBottom: `2px solid ${activeTab === t ? '#00e5cc' : 'transparent'}`,
+                color: activeTab === t ? '#00e5cc' : '#7a8a9a',
+                fontSize: 11, fontFamily: 'var(--font-mono)', cursor: 'pointer',
+                textTransform: 'uppercase', letterSpacing: '1.3px',
+                transition: 'all .2s', fontWeight: activeTab === t ? 700 : 500, position: 'relative',
+              }}>
+                {t === 'hosts' ? 'Hosts Map' : t === 'ports' ? 'Open Ports' : t === 'vulns' ? `Vulnerabilities (${vulns.length})` : 'Report'}
+                {activeTab === t && (
+                  <div style={{ position: 'absolute', bottom: -2, left: 0, right: 0, height: 2,
+                    background: '#00e5cc', boxShadow: '0 0 10px #00e5cc', borderRadius: 2 }} />
                 )}
+              </button>
+            ))}
+          </div>
 
-                {/* Ports tab */}
-                {activeTab === 'ports' && (
-                  allPorts.length === 0
-                    ? <div style={{ color: '#4a5568', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'center', padding: 24 }}>No open ports found.</div>
-                    : <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr>
-                              {['Port', 'Protocol', 'Service', 'Version', 'Host', 'Risk'].map(h => (
-                                <th key={h} style={{ padding: '8px 12px', fontSize: 9, fontFamily: 'var(--font-mono)', color: '#3a4a5a', textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,.05)' }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {allPorts.map((p, idx) => (
-                              <tr key={`${p.host}-${p.port}-${idx}`} style={{ borderBottom: '1px solid rgba(255,255,255,.03)' }}
-                                onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,.025)'}
-                                onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'}>
-                                <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: '#00e5cc' }}>{p.port}</td>
-                                <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568', textTransform: 'uppercase' }}>{p.protocol}</td>
-                                <td style={{ padding: '10px 12px', fontFamily: 'var(--font-display)', fontSize: 12, color: '#d8e3f0', fontWeight: 600 }}>{p.service || '—'}</td>
-                                <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontSize: 11, color: '#6a7b8a' }}>{p.version || '—'}</td>
-                                <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontSize: 11, color: '#4a5568' }}>{p.host}</td>
-                                <td style={{ padding: '10px 12px' }}>
-                                  <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', background: `${SEV_COLOR[p.risk]}10`, color: SEV_COLOR[p.risk], border: `1px solid ${SEV_COLOR[p.risk]}28` }}>{p.risk}</span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                )}
+          <div style={{ padding: '24px 28px' }} key={activeTab}>
 
-                {/* Vulns tab */}
-                {activeTab === 'vulns' && (
-                  vulns.length === 0
-                    ? <div style={{ color: '#4a5568', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'center', padding: 24 }}>No vulnerabilities found.</div>
-                    : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {vulns.map(v => (
-                          <div key={v.id} style={{ borderRadius: 10, border: `1px solid ${SEV_COLOR[v.severity] ?? '#4a5568'}20`, overflow: 'hidden' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'rgba(255,255,255,.02)', cursor: 'pointer' }}
-                              onClick={() => setExpandedVuln(expandedVuln === v.id ? null : v.id)}>
-                              <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 4, fontFamily: 'var(--font-mono)', background: `${SEV_COLOR[v.severity]}12`, color: SEV_COLOR[v.severity], border: `1px solid ${SEV_COLOR[v.severity]}30`, flexShrink: 0 }}>{v.cve_id}</span>
-                              <span style={{ fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600, color: '#d8e3f0', flex: 1 }}>{v.title || v.cve_id}</span>
-                              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>{v.affected_host}</span>
-                              <span style={{ fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 800, color: SEV_COLOR[v.severity] }}>{v.cvss_score?.toFixed(1)}</span>
-                              {v.exploit_available && <span style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, background: 'rgba(255,51,85,.12)', color: '#ff3355', border: '1px solid rgba(255,51,85,.3)', fontFamily: 'var(--font-mono)' }}>EXPLOIT</span>}
-                              {expandedVuln === v.id ? <ChevronUp size={14} color="#4a5568" /> : <ChevronDown size={14} color="#4a5568" />}
-                            </div>
-                            {expandedVuln === v.id && (
-                              <div style={{ padding: '12px 14px', borderTop: `1px solid ${SEV_COLOR[v.severity]}15`, background: 'rgba(0,0,0,0.2)' }}>
-                                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', marginBottom: 6 }}>
-                                  Port: <span style={{ color: '#00e5cc' }}>{v.affected_port}/{v.affected_service}</span>
-                                  {v.owasp && <> · OWASP: <span style={{ color: '#a78bfa' }}>{v.owasp}</span></>}
-                                </div>
-                                {v.description && (
-                                  <p style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#8899aa', lineHeight: 1.6, marginBottom: 8 }}>{v.description}</p>
-                                )}
-                                <div style={{ padding: '10px 12px', background: 'rgba(0,229,204,.04)', borderRadius: 7, border: '1px solid rgba(0,229,204,.1)', fontSize: 11, fontFamily: 'var(--font-mono)', color: '#00e5cc', lineHeight: 1.5 }}>
-                                  Remediation: {v.remediation || 'Update to latest version.'}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                )}
-
-                {/* Report tab */}
-                {activeTab === 'report' && report && (
-                  <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
-                      <h3 style={{ fontSize: 15, fontFamily: 'var(--font-display)', fontWeight: 700, color: '#ffffff', marginBottom: 8 }}>Executive Summary</h3>
-                      <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#6a7b8a', lineHeight: 1.7, marginBottom: 4 }}>
-                        Network assessment of <span style={{ color: '#00e5cc' }}>{report.target}</span> discovered{' '}
-                        <strong style={{ color: '#4d9eff' }}>{report.summary.hosts_discovered} host(s)</strong> with{' '}
-                        <strong style={{ color: '#00e5cc' }}>{report.summary.open_ports} open port(s)</strong>.
-                      </p>
-                      <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#6a7b8a', lineHeight: 1.7, marginBottom: 16 }}>
-                        CVE correlation identified <strong style={{ color: '#ff3355' }}>{report.summary.total_vulns} vulnerability/vulnerabilities</strong>.
-                        {report.summary.exploit_count > 0 && <> <strong style={{ color: '#ff3355' }}>{report.summary.exploit_count} exploit(s) available</strong> — immediate patching required.</>}
-                        {report.summary.exploit_count === 0 && ' No active exploits detected.'}
-                      </p>
-                      <button
-                        onClick={() => {
-                          const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
-                          const url = URL.createObjectURL(blob)
-                          const a = document.createElement('a'); a.href = url
-                          a.download = `SCN-${report.scan_id.slice(-6).toUpperCase()}-report.json`
-                          a.click(); URL.revokeObjectURL(url)
+            {/* Hosts tab */}
+            {activeTab === 'hosts' && (
+              hosts.length === 0
+                ? <div style={{ color: '#6a7b8a', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'center', padding: 36 }}>No hosts discovered.</div>
+                : <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 24, animation: 'fade-in .25s ease' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {hosts.map((h, idx) => (
+                        <div key={h.ip} style={{
+                          display: 'flex', alignItems: 'center', gap: 16,
+                          padding: '14px 18px', borderRadius: 11,
+                          background: 'rgba(255,255,255,.025)',
+                          border: `1px solid ${SEV_COLOR[h.severity]}28`,
+                          transition: 'all .2s ease',
+                          animation: 'slide-in-up .35s ease both', animationDelay: `${idx * 50}ms`,
                         }}
-                        style={{ padding: '9px 18px', borderRadius: 8, background: '#00e5cc', color: '#04110e', border: 'none', fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <Download size={14} /> Download Report (JSON)
-                      </button>
-                    </div>
-                    <div style={{ width: 160, flexShrink: 0 }}>
-                      {[['Critical', report.summary.critical, '#ff3355'], ['High', report.summary.high, '#ff6b35'], ['Medium', report.summary.medium, '#ffcc00'], ['Low', report.summary.low, '#00cc88']].map(([label, count, color]) => (
-                        <div key={label as string} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: color as string, flexShrink: 0 }} />
-                          <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,.05)', borderRadius: 2, overflow: 'hidden' }}>
-                            <div style={{ width: report.summary.total_vulns > 0 ? `${((count as number) / report.summary.total_vulns) * 100}%` : '0%', height: '100%', background: color as string, borderRadius: 2 }} />
+                        onMouseEnter={e => { e.currentTarget.style.transform = 'translateX(3px)'; e.currentTarget.style.borderColor = `${SEV_COLOR[h.severity]}55`; e.currentTarget.style.background = 'rgba(255,255,255,.04)' }}
+                        onMouseLeave={e => { e.currentTarget.style.transform = 'translateX(0)'; e.currentTarget.style.borderColor = `${SEV_COLOR[h.severity]}28`; e.currentTarget.style.background = 'rgba(255,255,255,.025)' }}>
+                          <div style={{
+                            width: 38, height: 38, borderRadius: 9, flexShrink: 0,
+                            background: `${SEV_COLOR[h.severity]}14`,
+                            border: `1px solid ${SEV_COLOR[h.severity]}35`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: `0 0 14px ${SEV_COLOR[h.severity]}28`,
+                          }}>
+                            <Server size={17} color={SEV_COLOR[h.severity]} />
                           </div>
-                          <span style={{ fontSize: 11, fontFamily: 'var(--font-display)', fontWeight: 700, color: color as string, width: 16, textAlign: 'right' }}>{count as number}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                              <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: '#e8edf5', fontWeight: 700, letterSpacing: '0.3px' }}>{h.ip}</span>
+                              {h.hostname && <span style={{ fontSize: 10, color: '#7a8a9a', fontFamily: 'var(--font-mono)' }}>· {h.hostname}</span>}
+                            </div>
+                            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#7a8a9a' }}>
+                              {h.os || 'OS unknown'} · {h.ports?.length ?? 0} open port(s)
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                            <span style={{ fontSize: 18, fontFamily: 'var(--font-display)', fontWeight: 800, color: SEV_COLOR[h.severity], textShadow: `0 0 10px ${SEV_COLOR[h.severity]}55` }}>{h.vulnCount}</span>
+                            <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#6a7b8a', textTransform: 'uppercase' }}>vulns</span>
+                          </div>
+                          <span style={{
+                            fontSize: 10, padding: '5px 11px', borderRadius: 12,
+                            fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.8px',
+                            background: `${SEV_COLOR[h.severity]}16`, color: SEV_COLOR[h.severity],
+                            border: `1px solid ${SEV_COLOR[h.severity]}38`, flexShrink: 0, fontWeight: 600,
+                          }}>
+                            {h.severity}
+                          </span>
                         </div>
                       ))}
                     </div>
+                    <div style={{
+                      background: 'linear-gradient(180deg, rgba(0,229,204,.05), rgba(0,229,204,.01))',
+                      border: '1px solid rgba(0,229,204,.16)',
+                      borderRadius: 12, padding: 14, position: 'sticky', top: 12,
+                    }}>
+                      <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#8899aa',
+                        textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: 10, fontWeight: 600,
+                        display: 'flex', alignItems: 'center', gap: 7 }}>
+                        <Network size={11} color="#00e5cc" /> Network Map
+                      </div>
+                      <NetworkTopology hosts={hosts} />
+                    </div>
                   </div>
-                )}
+            )}
+
+            {/* Ports tab */}
+            {activeTab === 'ports' && (
+              allPorts.length === 0
+                ? <div style={{ color: '#6a7b8a', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'center', padding: 36 }}>No open ports found.</div>
+                : <div style={{ overflowX: 'auto', animation: 'fade-in .25s ease' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          {['Port', 'Protocol', 'Service', 'Version', 'Host', 'Risk'].map(h => (
+                            <th key={h} style={{ padding: '12px 14px', fontSize: 10, fontFamily: 'var(--font-mono)',
+                              color: '#7a8a9a', textTransform: 'uppercase', letterSpacing: '1.3px',
+                              textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,.06)', fontWeight: 600 }}>
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allPorts.map((p, idx) => (
+                          <tr key={`${p.host}-${p.port}-${idx}`} style={{
+                            borderBottom: '1px solid rgba(255,255,255,.03)',
+                            animation: 'fade-in-up .25s ease both', animationDelay: `${Math.min(idx, 12) * 30}ms`,
+                            transition: 'background .15s ease',
+                          }}
+                            onMouseEnter={e => (e.currentTarget as HTMLTableRowElement).style.background = 'rgba(0,229,204,.04)'}
+                            onMouseLeave={e => (e.currentTarget as HTMLTableRowElement).style.background = 'transparent'}>
+                            <td style={{ padding: '13px 14px', fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 700, color: '#00e5cc' }}>{p.port}</td>
+                            <td style={{ padding: '13px 14px', fontFamily: 'var(--font-mono)', fontSize: 11, color: '#7a8a9a', textTransform: 'uppercase' }}>{p.protocol}</td>
+                            <td style={{ padding: '13px 14px', fontFamily: 'var(--font-display)', fontSize: 13, color: '#e8edf5', fontWeight: 600 }}>{p.service || '—'}</td>
+                            <td style={{ padding: '13px 14px', fontFamily: 'var(--font-mono)', fontSize: 11.5, color: '#8899aa' }}>{p.version || '—'}</td>
+                            <td style={{ padding: '13px 14px', fontFamily: 'var(--font-mono)', fontSize: 11.5, color: '#7a8a9a' }}>{p.host}</td>
+                            <td style={{ padding: '13px 14px' }}>
+                              <span style={{ fontSize: 10, padding: '4px 11px', borderRadius: 11, fontFamily: 'var(--font-mono)',
+                                textTransform: 'uppercase', letterSpacing: '0.7px',
+                                background: `${SEV_COLOR[p.risk]}16`, color: SEV_COLOR[p.risk],
+                                border: `1px solid ${SEV_COLOR[p.risk]}38`, fontWeight: 600 }}>
+                                {p.risk}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+            )}
+
+            {/* Vulns tab */}
+            {activeTab === 'vulns' && (
+              vulns.length === 0
+                ? <div style={{ color: '#6a7b8a', fontFamily: 'var(--font-mono)', fontSize: 12, textAlign: 'center', padding: 36 }}>No vulnerabilities found.</div>
+                : <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'fade-in .25s ease' }}>
+                    {vulns.map((v, idx) => (
+                      <div key={v.id} style={{
+                        borderRadius: 12, border: `1px solid ${SEV_COLOR[v.severity] ?? '#4a5568'}28`,
+                        overflow: 'hidden', transition: 'all .2s ease',
+                        animation: 'slide-in-up .3s ease both', animationDelay: `${Math.min(idx, 10) * 40}ms`,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = `${SEV_COLOR[v.severity]}55` }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = `${SEV_COLOR[v.severity]}28` }}>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 14,
+                          padding: '14px 18px',
+                          background: expandedVuln === v.id ? `${SEV_COLOR[v.severity]}10` : 'rgba(255,255,255,.025)',
+                          cursor: 'pointer', transition: 'background .18s ease',
+                        }}
+                          onClick={() => setExpandedVuln(expandedVuln === v.id ? null : v.id)}>
+                          <span style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6,
+                            fontFamily: 'var(--font-mono)',
+                            background: `${SEV_COLOR[v.severity]}18`, color: SEV_COLOR[v.severity],
+                            border: `1px solid ${SEV_COLOR[v.severity]}38`, flexShrink: 0,
+                            fontWeight: 700, letterSpacing: '0.4px' }}>{v.cve_id}</span>
+                          <span style={{ fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 600, color: '#e8edf5', flex: 1 }}>{v.title || v.cve_id}</span>
+                          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#7a8a9a' }}>{v.affected_host}</span>
+                          <span style={{ fontSize: 16, fontFamily: 'var(--font-display)', fontWeight: 800, color: SEV_COLOR[v.severity],
+                            textShadow: `0 0 10px ${SEV_COLOR[v.severity]}50` }}>{v.cvss_score?.toFixed(1)}</span>
+                          {v.exploit_available && (
+                            <span style={{
+                              fontSize: 9, padding: '4px 9px', borderRadius: 6,
+                              background: 'rgba(255,51,85,.16)', color: '#ff3355',
+                              border: '1px solid rgba(255,51,85,.42)',
+                              fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '0.7px',
+                              display: 'flex', alignItems: 'center', gap: 5,
+                              animation: 'pulse-soft 1.8s ease-in-out infinite',
+                            }}>
+                              <Zap size={10} fill="#ff3355" /> EXPLOIT
+                            </span>
+                          )}
+                          <div style={{ transition: 'transform .25s ease',
+                            transform: expandedVuln === v.id ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                            <ChevronDown size={15} color="#7a8a9a" />
+                          </div>
+                        </div>
+                        {expandedVuln === v.id && (
+                          <div style={{
+                            padding: '16px 18px', borderTop: `1px solid ${SEV_COLOR[v.severity]}25`,
+                            background: 'rgba(0,0,0,0.3)', animation: 'slide-in-up .25s ease',
+                          }}>
+                            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#7a8a9a',
+                              marginBottom: 10, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                              <span>Port: <span style={{ color: '#00e5cc', fontWeight: 600 }}>{v.affected_port}/{v.affected_service}</span></span>
+                              {v.owasp && <span>OWASP: <span style={{ color: '#a78bfa', fontWeight: 600 }}>{v.owasp}</span></span>}
+                            </div>
+                            {v.description && (
+                              <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#8899aa', lineHeight: 1.75, marginBottom: 12 }}>{v.description}</p>
+                            )}
+                            <div style={{
+                              padding: '12px 14px', background: 'rgba(0,229,204,.06)',
+                              borderRadius: 9, border: '1px solid rgba(0,229,204,.18)',
+                              fontSize: 12, fontFamily: 'var(--font-mono)',
+                              color: '#00e5cc', lineHeight: 1.65,
+                              display: 'flex', gap: 10, alignItems: 'flex-start',
+                            }}>
+                              <Shield size={13} style={{ flexShrink: 0, marginTop: 2 }} />
+                              <span><strong style={{ color: '#7fffec' }}>Remediation:</strong> {v.remediation || 'Update to latest version.'}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+            )}
+
+            {/* Report tab */}
+            {activeTab === 'report' && report && (
+              <div style={{ display: 'flex', gap: 26, alignItems: 'flex-start', animation: 'fade-in .25s ease' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                    <FileText size={16} color="#00e5cc" />
+                    <h3 style={{ fontSize: 17, fontFamily: 'var(--font-display)', fontWeight: 700, color: '#ffffff', margin: 0, letterSpacing: '-.3px' }}>Executive Summary</h3>
+                  </div>
+                  <p style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: '#8899aa', lineHeight: 1.85, marginBottom: 8 }}>
+                    Network assessment of <span style={{ color: '#00e5cc', fontWeight: 600 }}>{report.target}</span> discovered{' '}
+                    <strong style={{ color: '#4d9eff' }}>{report.summary.hosts_discovered} host(s)</strong> with{' '}
+                    <strong style={{ color: '#00e5cc' }}>{report.summary.open_ports} open port(s)</strong>.
+                  </p>
+                  <p style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: '#8899aa', lineHeight: 1.85, marginBottom: 22 }}>
+                    CVE correlation identified <strong style={{ color: '#ff3355' }}>{report.summary.total_vulns} vulnerability/vulnerabilities</strong>.
+                    {report.summary.exploit_count > 0 && <> <strong style={{ color: '#ff3355' }}>{report.summary.exploit_count} exploit(s) available</strong> — immediate patching required.</>}
+                    {report.summary.exploit_count === 0 && ' No active exploits detected.'}
+                  </p>
+                  <button
+                    onClick={() => {
+                      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a'); a.href = url
+                      a.download = `SCN-${report.scan_id.slice(-6).toUpperCase()}-report.json`
+                      a.click(); URL.revokeObjectURL(url)
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,229,204,.45)' }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,229,204,.32)' }}
+                    style={{
+                      padding: '12px 22px', borderRadius: 10,
+                      background: 'linear-gradient(135deg, #00e5cc, #00b3a1)',
+                      color: '#04110e', border: 'none', fontSize: 13,
+                      fontFamily: 'var(--font-display)', fontWeight: 700,
+                      cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8,
+                      boxShadow: '0 4px 16px rgba(0,229,204,.32)',
+                      transition: 'all .2s ease',
+                    }}>
+                    <Download size={15} /> Download Report (JSON)
+                  </button>
+                </div>
+                <div style={{ width: 240, flexShrink: 0, padding: 20, borderRadius: 12,
+                  background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)' }}>
+                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#8899aa',
+                    textTransform: 'uppercase', letterSpacing: '1.3px', marginBottom: 14, fontWeight: 600 }}>
+                    Severity Breakdown
+                  </div>
+                  {[['Critical', report.summary.critical, '#ff3355'], ['High', report.summary.high, '#ff6b35'], ['Medium', report.summary.medium, '#ffcc00'], ['Low', report.summary.low, '#00cc88']].map(([label, count, color], i) => {
+                    const pct = report.summary.total_vulns > 0 ? ((count as number) / report.summary.total_vulns) * 100 : 0
+                    return (
+                      <div key={label as string} style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 12,
+                        animation: 'slide-in-left .4s ease both', animationDelay: `${i * 80}ms` }}>
+                        <div style={{ width: 9, height: 9, borderRadius: '50%', background: color as string, flexShrink: 0, boxShadow: `0 0 8px ${color}90` }} />
+                        <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,.05)', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${pct}%`, height: '100%',
+                            background: `linear-gradient(90deg, ${color}, ${color}cc)`,
+                            borderRadius: 3, boxShadow: `0 0 8px ${color}90`,
+                            transition: 'width .7s ease',
+                          }} />
+                        </div>
+                        <span style={{ fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 700, color: color as string, width: 20, textAlign: 'right' }}>{count as number}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────  RECENT SCANS — BULLETED LIST  ───────────────────── */}
+      {recentScans.length > 0 && (
+        <div style={{
+          padding: '20px 26px', borderRadius: 16,
+          background: 'linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))',
+          border: '1px solid rgba(255,255,255,.06)',
+          position: 'relative', overflow: 'hidden',
+          animation: 'fade-in-up .4s ease',
+        }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+            background: 'linear-gradient(90deg, transparent, rgba(167,139,250,.3), transparent)' }} />
+
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(167,139,250,.1)',
+              border: '1px solid rgba(167,139,250,.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <History size={14} color="#a78bfa" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontFamily: 'var(--font-display)', color: '#e8edf5', fontWeight: 700, letterSpacing: '-.2px' }}>
+                Recent Scans
+              </div>
+              <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#6a7b8a',
+                textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 2, fontWeight: 600 }}>
+                {recentScans.length} {recentScans.length === 1 ? 'entry' : 'entries'} · click to load
               </div>
             </div>
-          )}
+          </div>
+
+          {/* Bulleted list */}
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, position: 'relative' }}>
+            {/* Vertical guide line through bullets */}
+            <div style={{ position: 'absolute', left: 7, top: 8, bottom: 8, width: 1,
+              background: 'linear-gradient(180deg, transparent, rgba(167,139,250,.18) 15%, rgba(167,139,250,.18) 85%, transparent)',
+              pointerEvents: 'none' }} />
+
+            {recentScans.map((s, idx) => {
+              const statusColor = s.status === 'completed' ? '#00cc88'
+                : s.status === 'failed' ? '#ff3355'
+                : s.status === 'running' ? '#00e5cc' : '#ffcc00'
+              const statusBg = s.status === 'completed' ? 'rgba(0,204,136,.1)'
+                : s.status === 'failed' ? 'rgba(255,51,85,.1)'
+                : s.status === 'running' ? 'rgba(0,229,204,.1)' : 'rgba(255,204,0,.1)'
+              return (
+                <li key={s.id}
+                  onClick={() => loadScan(s.id)}
+                  style={{
+                    position: 'relative', display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '11px 12px 11px 28px', marginBottom: 4, borderRadius: 9,
+                    cursor: 'pointer', transition: 'all .18s ease',
+                    border: '1px solid transparent',
+                    animation: 'slide-in-left .35s ease both', animationDelay: `${idx * 50}ms`,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = `${statusColor}0d`; e.currentTarget.style.borderColor = `${statusColor}28`; e.currentTarget.style.transform = 'translateX(3px)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.transform = 'translateX(0)' }}>
+
+                  {/* Bullet dot */}
+                  <span style={{
+                    position: 'absolute', left: 3, top: '50%', transform: 'translateY(-50%)',
+                    width: 9, height: 9, borderRadius: '50%',
+                    background: statusColor,
+                    boxShadow: `0 0 8px ${statusColor}aa, 0 0 0 3px ${statusBg}`,
+                    flexShrink: 0,
+                    animation: s.status === 'running' ? 'pulse-dot 1s infinite' : 'none',
+                  }} />
+
+                  {/* Target */}
+                  <span style={{
+                    fontSize: 13, color: '#e8edf5', fontFamily: 'var(--font-mono)',
+                    fontWeight: 600, letterSpacing: '0.3px', flex: 1, minWidth: 0,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {s.target}
+                  </span>
+
+                  {/* Timestamp */}
+                  <span style={{
+                    fontSize: 10.5, fontFamily: 'var(--font-mono)', color: '#7a8a9a',
+                    flexShrink: 0, letterSpacing: '0.3px',
+                  }}>
+                    {new Date(s.created_at).toLocaleString(undefined, {
+                      month: 'short', day: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+
+                  {/* Status pill */}
+                  <span style={{
+                    fontSize: 9, padding: '3px 10px', borderRadius: 11, fontFamily: 'var(--font-mono)',
+                    background: statusBg, color: statusColor,
+                    border: `1px solid ${statusColor}40`,
+                    textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700,
+                    flexShrink: 0, minWidth: 78, textAlign: 'center',
+                  }}>
+                    {s.status}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
         </div>
-      </div>
+      )}
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.3)} }
-        @keyframes ring-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(0,229,204,0.15)} 50%{box-shadow:0 0 0 6px rgba(0,229,204,0.05)} }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.55;transform:scale(1.25)} }
+        @keyframes pulse-ring { 0%{transform:scale(0.85);opacity:0.55} 80%{opacity:0} 100%{transform:scale(1.6);opacity:0} }
+        @keyframes pipe-beam { 0%{transform:translateX(-40%)} 100%{transform:translateX(250%)} }
+        @keyframes rail-beam { 0%{transform:translateY(-100%)} 100%{transform:translateY(300%)} }
+        @keyframes edge-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        @keyframes check-pop { 0%{transform:scale(0);opacity:0} 60%{transform:scale(1.25);opacity:1} 100%{transform:scale(1)} }
+        @keyframes icon-bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-1.5px)} }
+        @keyframes score-glow { 0%,100%{filter:drop-shadow(0 0 24px currentColor)} 50%{filter:drop-shadow(0 0 42px currentColor)} }
+        @keyframes dash-flow { to { stroke-dashoffset: -34; } }
+        @keyframes topo-pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
+        @keyframes topo-ring { 0%{transform:scale(0.7);opacity:0.6} 100%{transform:scale(1.7);opacity:0} }
+        @keyframes term-scan { 0%{transform:translateY(-100%)} 100%{transform:translateY(2000%)} }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-3px)} 75%{transform:translateX(3px)} }
+        @keyframes fade-in-up { 0%{opacity:0;transform:translateY(10px)} 100%{opacity:1;transform:translateY(0)} }
+        @keyframes slide-in-up { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes slide-in-left { from{opacity:0;transform:translateX(-10px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes fade-in { from{opacity:0} to{opacity:1} }
+        @keyframes pulse-soft { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.78;transform:scale(1.04)} }
       `}</style>
     </div>
   )
