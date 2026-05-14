@@ -512,14 +512,28 @@ async def _check_sensitive_paths(client: httpx.AsyncClient, base_url: str) -> li
         full_url = base + path
         try:
             resp = await client.get(full_url, follow_redirects=False, timeout=5)
-            if resp.status_code in (200, 403):
+            if resp.status_code == 200:
+                # File is genuinely accessible — report at full configured severity
                 findings.append(WebFinding(
                     check_id=f"WEB-PATH-{path.strip('/').upper().replace('/', '_').replace('.', '_')}",
                     title=title, severity=severity, cvss_score=cvss, owasp=owasp,
                     affected_url=full_url,
-                    description=f"The path '{path}' returned HTTP {resp.status_code}.",
-                    evidence=f"GET {full_url} → HTTP {resp.status_code} ({len(resp.content)} bytes)",
-                    remediation=f"Restrict access to '{path}' via server configuration.",
+                    description=f"The path '{path}' is publicly accessible (HTTP 200). This file should not be reachable from the internet.",
+                    evidence=f"GET {full_url} → HTTP 200 ({len(resp.content)} bytes)",
+                    remediation=f"Remove or restrict access to '{path}' via server configuration or .htaccess rules.",
+                    references=["https://owasp.org/www-project-web-security-testing-guide/"],
+                ))
+            elif resp.status_code == 403:
+                # Server returned Forbidden — path exists but access is blocked.
+                # Downgrade to LOW: information disclosure (existence confirmed, content not accessible).
+                findings.append(WebFinding(
+                    check_id=f"WEB-PATH-{path.strip('/').upper().replace('/', '_').replace('.', '_')}-EXISTS",
+                    title=f"{title} (Access Restricted)",
+                    severity=Severity.LOW, cvss_score=3.1, owasp=owasp,
+                    affected_url=full_url,
+                    description=f"The path '{path}' exists on the server but returns HTTP 403 (Forbidden). While direct access is blocked, the file's existence is confirmed, which may aid an attacker.",
+                    evidence=f"GET {full_url} → HTTP 403 ({len(resp.content)} bytes)",
+                    remediation=f"Remove '{path}' from the server entirely rather than relying on access controls to protect it.",
                     references=["https://owasp.org/www-project-web-security-testing-guide/"],
                 ))
         except Exception:

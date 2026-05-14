@@ -14,7 +14,8 @@ async function proxy(req: NextRequest): Promise<NextResponse> {
   const init: RequestInit = { method: req.method, headers }
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    init.body = await req.arrayBuffer()
+    const text = await req.text()
+    if (text) init.body = text
   }
 
   const upstream = await fetch(destUrl, init)
