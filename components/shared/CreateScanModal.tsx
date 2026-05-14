@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState } from 'react'
 import { X, Target, Cpu, Loader2, AlertCircle, Globe, Shield, FolderSearch } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -68,7 +68,7 @@ export default function CreateScanModal({ onClose, onCreated }: Props) {
   }
 
   const inputStyle: React.CSSProperties = {
-    width: '100%', background: '#050709', border: '1px solid rgba(255,255,255,.1)',
+    width: '100%', background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.1)',
     borderRadius: 8, padding: '10px 14px', color: '#e8edf5', fontSize: 13,
     fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box',
   }

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState } from 'react'
 import { Server, ShieldAlert, Globe, Activity, CheckCircle2, Play, Upload, Settings2, Shield, Signal, TerminalSquare } from 'lucide-react'
 
@@ -76,7 +76,7 @@ export default function AgentDashboardPage() {
               {connected ? 'Linked to Admin' : 'Disconnected'}
             </span>
             <div onClick={() => setConnected(!connected)} style={{ width: 36, height: 20, borderRadius: 10, background: connected ? '#00cc88' : '#ff3355', position: 'relative', cursor: 'pointer', marginLeft: 8 }}>
-              <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#050709', position: 'absolute', top: 3, left: connected ? 19 : 3, transition: 'left .2s' }} />
+              <div style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--surface-input)', position: 'absolute', top: 3, left: connected ? 19 : 3, transition: 'left .2s' }} />
             </div>
           </div>
         </div>
@@ -118,7 +118,7 @@ export default function AgentDashboardPage() {
                   </div>
                 </div>
 
-                <div style={{ padding: '12px 16px', background: '#050709', border: '1px solid rgba(255,255,255,.04)', borderRadius: 8, fontFamily: 'var(--font-display)', fontSize: 13, color: '#c8d3e0', marginBottom: 16 }}>
+                <div style={{ padding: '12px 16px', background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.04)', borderRadius: 8, fontFamily: 'var(--font-display)', fontSize: 13, color: '#c8d3e0', marginBottom: 16 }}>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#4a5568', textTransform: 'uppercase', marginRight: 8 }}>Task Config:</span>
                   {scan.instructions}
                 </div>
@@ -145,7 +145,7 @@ export default function AgentDashboardPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           
           {/* Terminal */}
-          <div style={{ background: '#050709', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,.03)', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <TerminalSquare size={14} color="#8899aa" />
               <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Local Telemetry</span>
@@ -176,7 +176,7 @@ export default function AgentDashboardPage() {
                 { label: 'System Uptime', val: '99.2%', color: '#00cc88' },
                 { label: 'Avg Latency', val: '12ms', color: '#8899aa' },
               ].map(s => (
-                <div key={s.label} style={{ padding: '16px', background: '#050709', border: '1px solid rgba(255,255,255,.04)', borderRadius: 10 }}>
+                <div key={s.label} style={{ padding: '16px', background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.04)', borderRadius: 10 }}>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568', textTransform: 'uppercase', marginBottom: 6, letterSpacing: '1px' }}>{s.label}</div>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: s.color }}>{s.val}</div>
                 </div>

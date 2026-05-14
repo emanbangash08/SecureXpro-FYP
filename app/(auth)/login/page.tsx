@@ -2,8 +2,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Shield, KeyRound, User, Eye, EyeOff, Loader2, ShieldAlert, Cpu, ChevronRight } from 'lucide-react'
+import { Shield, KeyRound, User, Eye, EyeOff, Loader2, ShieldAlert, Cpu, ChevronRight, Sun, Moon } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { useTheme } from '@/lib/theme-context'
 
 function useTypingEffect(texts: string[], speed = 60) {
   const [display, setDisplay] = useState('')
@@ -189,6 +190,7 @@ export default function LoginPage() {
   const [role, setRole] = useState<'user'|'agent'>('user')
   const [tickerIdx, setTickerIdx] = useState(0)
   const [tickerVisible, setTickerVisible] = useState(true)
+  const { theme, toggleTheme } = useTheme()
 
   const typedText = useTypingEffect([
     'Scanning network topology...',
@@ -239,12 +241,53 @@ export default function LoginPage() {
       minHeight: '100vh',
       display: 'grid',
       gridTemplateColumns: '1fr 480px',
-      background: '#03050a',
+      background: 'var(--bg-base)',
       fontFamily: 'var(--font-ui)',
       overflow: 'hidden',
+      position: 'relative',
     }}>
+      {/* Floating theme toggle */}
+      <button
+        onClick={toggleTheme}
+        title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+        suppressHydrationWarning
+        style={{
+          position: 'absolute', top: 22, right: 22, zIndex: 20,
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 14px 8px 11px', borderRadius: 999,
+          background: 'var(--surface-1)',
+          border: '1px solid var(--border-default)',
+          color: 'var(--text-soft)',
+          fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 600,
+          letterSpacing: '0.5px', cursor: 'pointer',
+          transition: 'all .2s ease',
+          backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+        }}
+        onMouseEnter={e => {
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,229,204,0.45)'
+          ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--accent-text)'
+          ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'
+        }}
+        onMouseLeave={e => {
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-default)'
+          ;(e.currentTarget as HTMLButtonElement).style.color = 'var(--text-soft)'
+          ;(e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)'
+        }}
+      >
+        <div style={{
+          width: 22, height: 22, borderRadius: '50%',
+          background: 'rgba(0,229,204,0.12)',
+          border: '1px solid rgba(0,229,204,0.3)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {theme === 'dark' ? <Sun size={12} color="#00e5cc" /> : <Moon size={12} color="#00e5cc" />}
+        </div>
+        <span>{theme === 'dark' ? 'Light' : 'Dark'} Mode</span>
+      </button>
+
       {/* Left Panel — Radar + Branding */}
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRight: '1px solid rgba(0,229,204,0.08)' }}>
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderRight: '1px solid rgba(0,229,204,0.08)', background: 'var(--bg-surface)' }}>
         {/* Grid overlay */}
         <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(0,229,204,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(0,229,204,0.025) 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
         {/* Ambient glow */}
@@ -258,33 +301,33 @@ export default function LoginPage() {
 
           {/* Brand */}
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 42, fontWeight: 800, color: '#ffffff', letterSpacing: '-1px', lineHeight: 1 }}>
-              Secure<span style={{ color: '#00e5cc' }}>X</span> Pro
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 42, fontWeight: 800, color: 'var(--text-strong)', letterSpacing: '-1px', lineHeight: 1 }}>
+              Secure<span style={{ color: 'var(--accent-text)' }}>X</span> Pro
             </div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '3px', marginTop: 10 }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '3px', marginTop: 10 }}>
               Cybersecurity Assessment Platform
             </div>
           </div>
 
           {/* Typing effect */}
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: '#00e5cc', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,229,204,0.05)', border: '1px solid rgba(0,229,204,0.12)', padding: '10px 20px', borderRadius: 8 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--accent-text)', display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,229,204,0.05)', border: '1px solid rgba(0,229,204,0.12)', padding: '10px 20px', borderRadius: 8 }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00e5cc', display: 'inline-block', boxShadow: '0 0 8px #00e5cc', flexShrink: 0 }} />
             <span>{typedText}<span style={{ animation: 'blink 1s step-end infinite' }}>_</span></span>
           </div>
 
           {/* Live threat ticker */}
           <div style={{ width: 360, overflow: 'hidden' }}>
-            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 6 }}>Live Intelligence Feed</div>
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, transition: 'opacity 0.3s', opacity: tickerVisible ? 1 : 0 }}>
+            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 6 }}>Live Intelligence Feed</div>
+            <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, transition: 'opacity 0.3s', opacity: tickerVisible ? 1 : 0 }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff3355', boxShadow: '0 0 8px #ff3355', flexShrink: 0, animation: 'pulse-soft 1.5s infinite' }} />
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#8899aa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{THREAT_TICKERS[tickerIdx]}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{THREAT_TICKERS[tickerIdx]}</span>
             </div>
           </div>
 
           {/* Feature pills */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
             {['Network Scanner', 'CVE Tracking', 'OWASP Top 10', 'Agent Management', 'PDF Reports'].map(f => (
-              <span key={f} style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568', border: '1px solid rgba(255,255,255,0.06)', padding: '5px 12px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span key={f} style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faintest)', border: '1px solid var(--border-default)', padding: '5px 12px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5 }}>
                 <ChevronRight size={10} color="#00e5cc" /> {f}
               </span>
             ))}
@@ -293,7 +336,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right Panel — Login Form */}
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '60px 48px', background: '#05080f', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '60px 48px', background: 'var(--bg-elevated)', position: 'relative', overflow: 'hidden', borderLeft: '1px solid var(--border-subtle)' }}>
         <div style={{ position: 'absolute', bottom: '-20%', right: '-20%', width: 400, height: 400, background: 'radial-gradient(circle, rgba(77,158,255,0.04) 0%, transparent 65%)', filter: 'blur(40px)' }} />
 
         <div style={{ position: 'relative', zIndex: 1, animation: 'fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1)' }}>
@@ -305,30 +348,30 @@ export default function LoginPage() {
                 <Shield size={22} color="#00e5cc" strokeWidth={1.5} />
               </div>
               <div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700, color: '#e8edf5' }}>SecureX Pro</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>v2.4.1 · Enterprise</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700, color: 'var(--text-body)' }}>SecureX Pro</div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px' }}>v2.4.1 · Enterprise</div>
               </div>
             </div>
-            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 800, color: '#ffffff', letterSpacing: '-0.5px', lineHeight: 1.1, marginBottom: 8 }}>
-              Secure Access<br /><span style={{ color: '#00e5cc' }}>Portal</span>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 800, color: 'var(--text-strong)', letterSpacing: '-0.5px', lineHeight: 1.1, marginBottom: 8 }}>
+              Secure Access<br /><span style={{ color: 'var(--accent-text)' }}>Portal</span>
             </h1>
-            <p style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: '#4a5568' }}>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-faintest)' }}>
               Identity verification required to proceed
             </p>
           </div>
 
           {/* Role Selector */}
-          <div style={{ display: 'flex', background: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 4, marginBottom: 28, border: '1px solid rgba(255,255,255,0.04)' }}>
+          <div style={{ display: 'flex', background: 'var(--surface-input)', borderRadius: 12, padding: 4, marginBottom: 28, border: '1px solid var(--border-subtle)' }}>
             {([
               { id: 'user',  label: 'User',        icon: User },
               { id: 'agent', label: 'Field Agent',  icon: Cpu  },
             ] as const).map(r => {
               const active = role === r.id
               return (
-                <button key={r.id} type="button" onClick={() => setRole(r.id)} style={{
+                <button key={r.id} type="button" onClick={() => setRole(r.id)} suppressHydrationWarning style={{
                   flex: 1, padding: '11px 0', borderRadius: 9, border: 'none',
                   background: active ? 'rgba(0,229,204,0.1)' : 'transparent',
-                  color: active ? '#00e5cc' : '#4a5568',
+                  color: active ? 'var(--accent-text)' : 'var(--text-faintest)',
                   fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600,
                   cursor: 'pointer', transition: 'all 0.25s ease',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -344,60 +387,62 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit}>
             {/* Username */}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1.5px', display: 'block', marginBottom: 8 }}>Network Identifier</label>
+              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1.5px', display: 'block', marginBottom: 8 }}>Network Identifier</label>
               <div style={{ position: 'relative' }}>
                 <div style={{ position: 'absolute', left: 14, top: 0, bottom: 0, display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
-                  <User size={16} color={email ? '#00e5cc' : '#4a5568'} style={{ transition: 'color 0.2s' }} />
+                  <User size={16} color={email ? 'var(--accent-text)' : 'var(--text-faintest)'} style={{ transition: 'color 0.2s' }} />
                 </div>
                 <input
                   type="text"
                   placeholder="Enter email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
+                  suppressHydrationWarning
                   style={{
-                    width: '100%', background: 'rgba(0,0,0,0.4)',
-                    border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10,
-                    padding: '14px 14px 14px 42px', color: '#ffffff',
+                    width: '100%', background: 'var(--surface-input)',
+                    border: '1px solid var(--border-default)', borderRadius: 10,
+                    padding: '14px 14px 14px 42px', color: 'var(--text-strong)',
                     fontSize: 14, fontFamily: 'var(--font-ui)', outline: 'none',
                     transition: 'all 0.2s ease',
                   }}
                   onFocus={e => { e.currentTarget.style.borderColor = 'rgba(0,229,204,0.5)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.08)' }}
-                  onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.boxShadow = 'none' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.boxShadow = 'none' }}
                 />
               </div>
             </div>
 
             {/* Password */}
             <div style={{ marginBottom: 28 }}>
-              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1.5px', display: 'block', marginBottom: 8 }}>Security Passkey</label>
+              <label style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1.5px', display: 'block', marginBottom: 8 }}>Security Passkey</label>
               <div style={{ position: 'relative' }}>
                 <div style={{ position: 'absolute', left: 14, top: 0, bottom: 0, display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
-                  <KeyRound size={16} color={password ? '#00e5cc' : '#4a5568'} style={{ transition: 'color 0.2s' }} />
+                  <KeyRound size={16} color={password ? 'var(--accent-text)' : 'var(--text-faintest)'} style={{ transition: 'color 0.2s' }} />
                 </div>
                 <input
                   type={showPass ? 'text' : 'password'}
                   placeholder="Enter passkey"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
+                  suppressHydrationWarning
                   style={{
-                    width: '100%', background: 'rgba(0,0,0,0.4)',
-                    border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10,
-                    padding: '14px 42px 14px 42px', color: '#ffffff',
+                    width: '100%', background: 'var(--surface-input)',
+                    border: '1px solid var(--border-default)', borderRadius: 10,
+                    padding: '14px 42px 14px 42px', color: 'var(--text-strong)',
                     fontSize: 14, fontFamily: 'var(--font-ui)', outline: 'none',
                     transition: 'all 0.2s ease',
                   }}
                   onFocus={e => { e.currentTarget.style.borderColor = 'rgba(0,229,204,0.5)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.08)' }}
-                  onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.boxShadow = 'none' }}
+                  onBlur={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.boxShadow = 'none' }}
                 />
-                <button type="button" onClick={() => setShowPass(!showPass)} style={{ position: 'absolute', right: 14, top: 0, bottom: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#4a5568', padding: 0, display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}
-                  onMouseEnter={e => e.currentTarget.style.color = '#8899aa'}
-                  onMouseLeave={e => e.currentTarget.style.color = '#4a5568'}>
+                <button type="button" onClick={() => setShowPass(!showPass)} suppressHydrationWarning style={{ position: 'absolute', right: 14, top: 0, bottom: 0, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-faintest)', padding: 0, display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}
+                  onMouseEnter={e => e.currentTarget.style.color = 'var(--text-dim)'}
+                  onMouseLeave={e => e.currentTarget.style.color = 'var(--text-faintest)'}>
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
               {/* Forgot password — BELOW password field */}
               <div style={{ textAlign: 'right', marginTop: 8 }}>
-                <Link href="/forgot-password" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#00e5cc', textDecoration: 'none', opacity: 0.75, transition: 'opacity 0.2s' }}
+                <Link href="/forgot-password" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-text)', textDecoration: 'none', opacity: 0.75, transition: 'opacity 0.2s' }}
                   onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.opacity = '1')}
                   onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => (e.currentTarget.style.opacity = '0.75')}>
                   Forgot Password?
@@ -414,10 +459,10 @@ export default function LoginPage() {
             )}
 
             {/* Submit */}
-            <button type="submit" disabled={loading} style={{
+            <button type="submit" disabled={loading} suppressHydrationWarning style={{
               width: '100%', padding: '15px 0', borderRadius: 10, border: 'none',
               background: loading ? 'rgba(0,229,204,0.08)' : 'linear-gradient(135deg, #00e5cc, #00bfaa)',
-              color: loading ? '#8899aa' : '#020a08',
+              color: loading ? 'var(--text-dim)' : '#020a08',
               fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700,
               cursor: loading ? 'not-allowed' : 'pointer',
               transition: 'all 0.25s ease',
@@ -435,23 +480,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Credentials hint */}
-          <div style={{ marginTop: 28, padding: '14px 16px', borderRadius: 10, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 8 }}>Demo Credentials</div>
-            <div style={{ display: 'flex', gap: 20 }}>
-              <div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#8899aa', marginBottom: 2 }}>User</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#00e5cc' }}>user / user123</div>
-              </div>
-              <div style={{ width: 1, background: 'rgba(255,255,255,0.05)' }} />
-              <div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#8899aa', marginBottom: 2 }}>Agent</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#00e5cc' }}>agent / agent123</div>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 24, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568' }}>
+          <div style={{ marginTop: 24, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-faintest)' }}>
             SecureX Pro · All connections encrypted · TLS 1.3
           </div>
         </div>

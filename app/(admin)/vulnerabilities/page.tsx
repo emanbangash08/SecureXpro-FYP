@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
 import { Search, ShieldAlert, X, Shield, AlertTriangle, AlertCircle, CheckCircle2, ArrowUpRight, Zap, RefreshCw } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -34,7 +34,7 @@ function CvssGauge({ score }: { score: number }) {
       </svg>
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 800, color, lineHeight: 1 }}>{score.toFixed(1)}</span>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 7, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.5px' }}>/10</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 7, color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>/10</span>
       </div>
     </div>
   )
@@ -80,16 +80,16 @@ export default function VulnerabilitiesPage() {
               {publiclyExploited} Active Exploits Available
             </span>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-display)', letterSpacing: '-.5px', marginBottom: 4 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-strong)', fontFamily: 'var(--font-display)', letterSpacing: '-.5px', marginBottom: 4 }}>
             Vulnerability Intelligence
           </h1>
-          <p style={{ fontSize: 11, color: '#4a5568', fontFamily: 'var(--font-mono)' }}>
+          <p style={{ fontSize: 11, color: 'var(--text-faintest)', fontFamily: 'var(--font-mono)' }}>
             CVE tracking · CVSS scoring · Remediation guidance · {counts.total} total entries
           </p>
         </div>
-        <button onClick={() => load()} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 9, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#8899aa', fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600, cursor: 'pointer', transition: 'all .2s' }}
+        <button onClick={() => load()} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', borderRadius: 9, background: 'var(--surface-3)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-dim)', fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600, cursor: 'pointer', transition: 'all .2s' }}
           onMouseEnter={e => { e.currentTarget.style.color = '#00e5cc'; e.currentTarget.style.borderColor = 'rgba(0,229,204,0.3)' }}
-          onMouseLeave={e => { e.currentTarget.style.color = '#8899aa'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}>
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-dim)'; e.currentTarget.style.borderColor = 'var(--border-default)' }}>
           <RefreshCw size={13} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} /> Refresh
         </button>
       </div>
@@ -105,13 +105,13 @@ export default function VulnerabilitiesPage() {
               setSeverityFilter(next)
               load(next)
             }}
-              style={{ background: severityFilter === sev ? `${cfg.color}10` : 'rgba(255,255,255,.025)', border: `1px solid ${severityFilter === sev ? `${cfg.color}35` : 'rgba(255,255,255,.05)'}`, borderRadius: 13, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer', transition: 'all .2s', textAlign: 'left' }}>
+              style={{ background: severityFilter === sev ? `${cfg.color}10` : 'var(--surface-1)', border: `1px solid ${severityFilter === sev ? `${cfg.color}35` : 'var(--border-default)'}`, borderRadius: 13, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer', transition: 'all .2s', textAlign: 'left' }}>
               <div style={{ width: 46, height: 46, borderRadius: '50%', background: `${cfg.color}12`, border: `1px solid ${cfg.color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <cfg.icon size={22} color={cfg.color} />
               </div>
               <div>
                 <div style={{ fontSize: 30, fontWeight: 800, color: cfg.color, fontFamily: 'var(--font-display)', lineHeight: 1, textShadow: `0 0 20px ${cfg.color}35` }}>{count}</div>
-                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a', textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: 4 }}>{cfg.label} Risk</div>
+                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-fainter)', textTransform: 'uppercase', letterSpacing: '0.8px', marginTop: 4 }}>{cfg.label} Risk</div>
               </div>
               {severityFilter === sev && (
                 <div style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 9, color: cfg.color, background: `${cfg.color}15`, padding: '3px 8px', borderRadius: 5, border: `1px solid ${cfg.color}25` }}>Filter ON</div>
@@ -123,31 +123,31 @@ export default function VulnerabilitiesPage() {
 
       {/* Search */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '10px 16px', flex: 1 }}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '10px 16px', flex: 1 }}
           onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(0,229,204,0.3)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'}>
+          onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-default)'}>
           <Search size={15} color="#4a5568" />
           <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
             placeholder="Search CVE ID, title, or description..."
-            style={{ background: 'transparent', border: 'none', color: '#e8edf5', fontSize: 13, fontFamily: 'var(--font-mono)', width: '100%', outline: 'none' }} />
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-body)', fontSize: 13, fontFamily: 'var(--font-mono)', width: '100%', outline: 'none' }} />
         </div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#00e5cc', background: 'rgba(0,229,204,0.08)', padding: '10px 16px', borderRadius: 9, border: '1px solid rgba(0,229,204,0.18)', whiteSpace: 'nowrap' }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-text)', background: 'rgba(0,229,204,0.08)', padding: '10px 16px', borderRadius: 9, border: '1px solid rgba(0,229,204,0.18)', whiteSpace: 'nowrap' }}>
           {filtered.length} / {vulns.length} shown
         </div>
       </div>
 
       {/* List */}
-      <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 14, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--surface-1)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 14, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr 140px 90px 100px 90px', padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,.05)', background: 'rgba(5,7,9,0.8)', gap: 16 }}>
           {['CVE ID', 'Description', 'Weakness / Host', 'Severity', 'CVSS', 'Action'].map(h => (
-            <div key={h} style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#3a4a5a', textTransform: 'uppercase', letterSpacing: '1.2px' }}>{h}</div>
+            <div key={h} style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-quietest)', textTransform: 'uppercase', letterSpacing: '1.2px' }}>{h}</div>
           ))}
         </div>
 
         {loading ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: '#4a5568', fontSize: 13, fontFamily: 'var(--font-mono)' }}>Loading vulnerabilities…</div>
+          <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-faintest)', fontSize: 13, fontFamily: 'var(--font-mono)' }}>Loading vulnerabilities…</div>
         ) : filtered.length === 0 ? (
-          <div style={{ padding: '48px', textAlign: 'center', color: '#4a5568', fontSize: 13, fontFamily: 'var(--font-mono)' }}>
+          <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-faintest)', fontSize: 13, fontFamily: 'var(--font-mono)' }}>
             {vulns.length === 0 ? 'No vulnerabilities found. Run a scan to discover issues.' : 'No results match your search.'}
           </div>
         ) : (
@@ -157,7 +157,7 @@ export default function VulnerabilitiesPage() {
               <div key={v.id}
                 onClick={() => setSelectedVuln(v)}
                 style={{ display: 'grid', gridTemplateColumns: '160px 1fr 140px 90px 100px 90px', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,.03)', cursor: 'pointer', transition: 'background .15s', gap: 16, animation: `fade-in-up ${0.05 + i * 0.03}s ease forwards` }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.03)'}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-2)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
 
                 <div>
@@ -169,16 +169,16 @@ export default function VulnerabilitiesPage() {
                   )}
                 </div>
 
-                <div style={{ fontSize: 12, fontFamily: 'var(--font-display)', color: '#8899aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }} title={v.description}>
+                <div style={{ fontSize: 12, fontFamily: 'var(--font-display)', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }} title={v.description}>
                   {v.description}
                 </div>
 
                 <div>
-                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a', padding: '3px 8px', background: 'rgba(255,255,255,0.04)', borderRadius: 5, border: '1px solid rgba(255,255,255,0.07)', display: 'inline-block', marginBottom: 2 }}>
+                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-fainter)', padding: '3px 8px', background: 'var(--surface-3)', borderRadius: 5, border: '1px solid rgba(255,255,255,0.07)', display: 'inline-block', marginBottom: 2 }}>
                     {v.affected_service || '—'}
                   </div>
                   {v.affected_host && (
-                    <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#3a4a5a' }}>{v.affected_host}</div>
+                    <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-quietest)' }}>{v.affected_host}</div>
                   )}
                 </div>
 
@@ -190,14 +190,14 @@ export default function VulnerabilitiesPage() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 30, height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ width: 30, height: 4, background: 'var(--border-default)', borderRadius: 2, overflow: 'hidden' }}>
                     <div style={{ width: `${(v.cvss_score / 10) * 100}%`, height: '100%', background: cfg.color, borderRadius: 2 }} />
                   </div>
                   <span style={{ fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 700, color: cfg.color }}>{v.cvss_score.toFixed(1)}</span>
                 </div>
 
                 <div>
-                  <button style={{ padding: '6px 12px', borderRadius: 7, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.08)', color: '#8899aa', cursor: 'pointer', fontSize: 10, fontFamily: 'var(--font-mono)', transition: 'all .2s', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <button style={{ padding: '6px 12px', borderRadius: 7, background: 'var(--border-default)', border: '1px solid rgba(255,255,255,.08)', color: 'var(--text-dim)', cursor: 'pointer', fontSize: 10, fontFamily: 'var(--font-mono)', transition: 'all .2s', display: 'flex', alignItems: 'center', gap: 5 }}>
                     <ArrowUpRight size={12} /> Details
                   </button>
                 </div>
@@ -219,18 +219,18 @@ export default function VulnerabilitiesPage() {
               <div style={{ padding: '28px 32px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 800, color: '#ffffff' }}>{v.cve_id || v.title}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 800, color: 'var(--text-strong)' }}>{v.cve_id || v.title}</span>
                     {v.exploit_available && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 9, fontFamily: 'var(--font-mono)', color: '#ff3355', background: 'rgba(255,51,85,0.1)', padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(255,51,85,0.25)' }}>
                         <Zap size={9} /> EXPLOIT AVAILABLE
                       </div>
                     )}
                   </div>
-                  <p style={{ fontSize: 13, fontFamily: 'var(--font-display)', color: '#8899aa', lineHeight: 1.6 }}>{v.description}</p>
+                  <p style={{ fontSize: 13, fontFamily: 'var(--font-display)', color: 'var(--text-dim)', lineHeight: 1.6 }}>{v.description}</p>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                   <CvssGauge score={v.cvss_score} />
-                  <button onClick={() => setSelectedVuln(null)} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, color: '#6a7b8a', cursor: 'pointer', padding: '6px', display: 'flex' }}>
+                  <button onClick={() => setSelectedVuln(null)} style={{ background: 'var(--border-default)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, color: 'var(--text-fainter)', cursor: 'pointer', padding: '6px', display: 'flex' }}>
                     <X size={16} />
                   </button>
                 </div>
@@ -240,12 +240,12 @@ export default function VulnerabilitiesPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
                   {[
                     { label: 'Severity',   value: v.severity.toUpperCase(), color: cfg.color },
-                    { label: 'Affected Host', value: v.affected_host || '—', color: '#8899aa' },
+                    { label: 'Affected Host', value: v.affected_host || '—', color: 'var(--text-dim)' },
                     { label: 'Service / Port', value: v.affected_port ? `${v.affected_service}:${v.affected_port}` : (v.affected_service || '—'), color: '#ff6b35' },
                     { label: 'OWASP',      value: v.owasp || '—', color: '#4d9eff' },
                   ].map(m => (
-                    <div key={m.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', padding: '12px 14px', borderRadius: 10 }}>
-                      <p style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>{m.label}</p>
+                    <div key={m.label} style={{ background: 'var(--surface-2)', border: '1px solid rgba(255,255,255,0.06)', padding: '12px 14px', borderRadius: 10 }}>
+                      <p style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>{m.label}</p>
                       <p style={{ fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 700, color: m.color, wordBreak: 'break-all' }}>{m.value}</p>
                     </div>
                   ))}
@@ -253,15 +253,15 @@ export default function VulnerabilitiesPage() {
 
                 {v.evidence && (
                   <div>
-                    <h4 style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: 8 }}>Evidence</h4>
-                    <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', padding: '14px 16px', borderRadius: 9, fontSize: 12, fontFamily: 'var(--font-mono)', color: '#c8d3e0' }}>
+                    <h4 style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: 8 }}>Evidence</h4>
+                    <div style={{ background: 'var(--surface-2)', border: '1px solid rgba(255,255,255,0.06)', padding: '14px 16px', borderRadius: 9, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-soft)' }}>
                       {v.evidence}
                     </div>
                   </div>
                 )}
 
                 <div>
-                  <h4 style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: 8 }}>Remediation Strategy</h4>
+                  <h4 style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1.2px', marginBottom: 8 }}>Remediation Strategy</h4>
                   <div style={{ background: 'rgba(0,229,204,0.04)', border: '1px solid rgba(0,229,204,0.15)', padding: '16px', borderRadius: 9, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                     <Shield size={16} color="#00e5cc" style={{ flexShrink: 0, marginTop: 1 }} />
                     <p style={{ fontSize: 13, fontFamily: 'var(--font-display)', color: '#d8e3f0', lineHeight: 1.6 }}>{v.remediation || 'No remediation guidance available.'}</p>
@@ -269,7 +269,7 @@ export default function VulnerabilitiesPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}>
-                  <button onClick={() => setSelectedVuln(null)} style={{ padding: '10px 20px', borderRadius: 9, background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#6a7b8a', fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600, cursor: 'pointer' }}>
+                  <button onClick={() => setSelectedVuln(null)} style={{ padding: '10px 20px', borderRadius: 9, background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-fainter)', fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600, cursor: 'pointer' }}>
                     Dismiss
                   </button>
                 </div>

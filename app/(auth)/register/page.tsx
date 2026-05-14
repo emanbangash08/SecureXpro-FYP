@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -40,19 +40,19 @@ function PasswordStrength({ password }: { password: string }) {
 }
 
 const inputStyle: React.CSSProperties = {
-  width: '100%', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.07)',
+  width: '100%', background: 'var(--surface-2)', border: '1px solid rgba(255,255,255,0.07)',
   borderRadius: 10, color: '#fff', fontSize: 14, fontFamily: 'var(--font-ui)',
   outline: 'none', boxSizing: 'border-box', transition: 'all 0.25s',
 }
 const onFocus = (e: React.FocusEvent<HTMLInputElement>) => {
   e.currentTarget.style.borderColor = 'rgba(0,229,204,0.5)'
   e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.1)'
-  e.currentTarget.style.background = 'rgba(0,0,0,0.4)'
+  e.currentTarget.style.background = 'var(--surface-input)'
 }
 const onBlur = (e: React.FocusEvent<HTMLInputElement>) => {
   e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
   e.currentTarget.style.boxShadow = 'none'
-  e.currentTarget.style.background = 'rgba(0,0,0,0.25)'
+  e.currentTarget.style.background = 'var(--surface-2)'
 }
 
 export default function RegisterPage() {
@@ -169,7 +169,7 @@ export default function RegisterPage() {
           {/* Role selector */}
           <div style={{ marginBottom: 22 }}>
             <label style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10, color: '#4a5568', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 10 }}>Role</label>
-            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.4)', borderRadius: 12, padding: 5, border: '1px solid rgba(255,255,255,0.04)' }}>
+            <div style={{ display: 'flex', background: 'var(--surface-input)', borderRadius: 12, padding: 5, border: '1px solid rgba(255,255,255,0.04)' }}>
               {[
                 { id: 'user',  label: 'User',           icon: UserCog },
                 { id: 'agent', label: 'Security Agent',  icon: Cpu    },
@@ -255,8 +255,8 @@ export default function RegisterPage() {
                 </div>
                 <input type={showConfirm ? 'text' : 'password'} placeholder="••••••••" value={confirm} onChange={e => setConfirm(e.target.value)}
                   style={{ ...inputStyle, padding: '14px 44px 14px 46px', borderColor: confirm ? (confirm === password ? 'rgba(0,204,136,0.4)' : 'rgba(255,51,85,0.3)') : undefined }}
-                  onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.1)'; e.currentTarget.style.background = 'rgba(0,0,0,0.4)' }}
-                  onBlur={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.background = 'rgba(0,0,0,0.25)' }} />
+                  onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.1)'; e.currentTarget.style.background = 'var(--surface-input)' }}
+                  onBlur={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.background = 'var(--surface-2)' }} />
                 <button type="button" onClick={() => setShowConfirm(!showConfirm)} style={{ position: 'absolute', right: 14, top: 0, bottom: 0, background: 'none', border: 'none', cursor: 'pointer', color: '#4a5568', padding: 0, display: 'flex', alignItems: 'center' }}>
                   {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Search, Filter, Activity, Server, Globe, Globe2, Layers,
@@ -19,7 +19,7 @@ function statusColor(status: ApiScanStatus) {
     case 'completed': return '#00cc88'
     case 'running':   return '#00e5cc'
     case 'failed':    return '#ff3355'
-    case 'cancelled': return '#8899aa'
+    case 'cancelled': return 'var(--text-dim)'
     default:          return '#ffcc00'
   }
 }
@@ -30,7 +30,7 @@ function riskColor(risk?: string) {
     case 'high':     return '#ff6b35'
     case 'medium':   return '#ffcc00'
     case 'low':      return '#00cc88'
-    default:         return '#4a5568'
+    default:         return 'var(--text-faintest)'
   }
 }
 
@@ -158,8 +158,8 @@ export default function ScansPage() {
     s.scan_type.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const sel: React.CSSProperties = { background: '#050709', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '9px 12px', color: '#8899aa', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', cursor: 'pointer' }
-  const opt = { style: { background: '#07090f', color: '#e8edf5' } }
+  const sel: React.CSSProperties = { background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '9px 12px', color: 'var(--text-dim)', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', cursor: 'pointer' }
+  const opt = { style: { background: '#07090f', color: 'var(--text-body)' } }
 
   return (
     <div style={{ padding: '28px 32px', maxWidth: 1400, fontFamily: 'var(--font-ui)', margin: '0 auto' }}>
@@ -167,10 +167,10 @@ export default function ScansPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#e8edf5', fontFamily: 'var(--font-display)', letterSpacing: '-.3px', marginBottom: 4 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-body)', fontFamily: 'var(--font-display)', letterSpacing: '-.3px', marginBottom: 4 }}>
             Scan Execution History
           </h1>
-          <p style={{ fontSize: 12, color: '#8899aa', fontFamily: 'var(--font-mono)' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
             Monitor and manage all security assessments. Auto-refreshes while scans are active.
           </p>
         </div>
@@ -183,12 +183,12 @@ export default function ScansPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
         {/* Filters */}
-        <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 12, padding: '16px 20px', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#050709', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 250 }}>
+        <div style={{ background: 'var(--surface-1)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 12, padding: '16px 20px', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 250 }}>
             <Search size={16} color="#8899aa" />
             <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
               placeholder="Search by target or type..."
-              style={{ background: 'transparent', border: 'none', color: '#e8edf5', fontSize: 13, fontFamily: 'var(--font-mono)', width: '100%', outline: 'none' }} />
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-body)', fontSize: 13, fontFamily: 'var(--font-mono)', width: '100%', outline: 'none' }} />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -214,30 +214,30 @@ export default function ScansPage() {
             </select>
           </div>
 
-          <button onClick={fetchScans} style={{ padding: '8px 10px', borderRadius: 8, background: 'transparent', border: '1px solid rgba(255,255,255,.08)', color: '#4a5568', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+          <button onClick={fetchScans} style={{ padding: '8px 10px', borderRadius: 8, background: 'transparent', border: '1px solid rgba(255,255,255,.08)', color: 'var(--text-faintest)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <RefreshCw size={14} />
           </button>
 
-          <div style={{ marginLeft: 'auto', fontSize: 12, fontFamily: 'var(--font-mono)', color: '#00e5cc', background: 'rgba(0,229,204,.1)', padding: '6px 12px', borderRadius: 20, border: '1px solid rgba(0,229,204,.2)' }}>
+          <div style={{ marginLeft: 'auto', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--accent-text)', background: 'rgba(0,229,204,.1)', padding: '6px 12px', borderRadius: 20, border: '1px solid rgba(0,229,204,.2)' }}>
             {filtered.length} / {total} Results
           </div>
         </div>
 
         {/* List */}
-        <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 14, overflow: 'hidden' }}>
+        <div style={{ background: 'var(--surface-1)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 14, overflow: 'hidden' }}>
           {/* Table header */}
-          <div style={{ display: 'flex', padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,.05)', background: '#050709' }}>
+          <div style={{ display: 'flex', padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,.05)', background: 'var(--surface-input)' }}>
             <div style={{ width: 40 }} />
-            <div style={{ flex: 2, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Target</div>
-            <div style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Type</div>
-            <div style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Status</div>
-            <div style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Risk</div>
-            <div style={{ width: 180, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'right' }}>Actions</div>
+            <div style={{ flex: 2, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px' }}>Target</div>
+            <div style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px' }}>Type</div>
+            <div style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px' }}>Status</div>
+            <div style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px' }}>Risk</div>
+            <div style={{ width: 180, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'right' }}>Actions</div>
           </div>
 
           {/* Body */}
           {loading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#4a5568', fontSize: 13, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-faintest)', fontSize: 13, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
               <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Loading scans...
             </div>
           ) : error ? (
@@ -245,7 +245,7 @@ export default function ScansPage() {
               {error}
             </div>
           ) : filtered.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#4a5568', fontSize: 13, fontFamily: 'var(--font-mono)' }}>
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-faintest)', fontSize: 13, fontFamily: 'var(--font-mono)' }}>
               {scans.length === 0 ? 'No scans yet. Click "New Scan" to get started.' : 'No scans match your filters.'}
             </div>
           ) : (
@@ -259,22 +259,22 @@ export default function ScansPage() {
                 return (
                   <div key={scan.id}
                     style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,.04)', opacity: acting ? 0.6 : 1, transition: 'all .2s' }}
-                    onMouseEnter={e => { if (!acting) e.currentTarget.style.background = 'rgba(255,255,255,.03)' }}
+                    onMouseEnter={e => { if (!acting) e.currentTarget.style.background = 'var(--surface-2)' }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
 
                     <div style={{ width: 40 }}><ScanTypeIcon type={scan.scan_type} /></div>
 
                     <div style={{ flex: 2, paddingRight: 20 }}>
-                      <div style={{ fontSize: 14, fontFamily: 'var(--font-display)', fontWeight: 600, color: '#e8edf5', marginBottom: 4 }}>
+                      <div style={{ fontSize: 14, fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--text-body)', marginBottom: 4 }}>
                         {scan.target}
                       </div>
-                      <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Clock size={10} /> {new Date(scan.created_at).toLocaleString()}
                       </div>
                     </div>
 
                     <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#8899aa', textTransform: 'capitalize' }}>
+                      <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', textTransform: 'capitalize' }}>
                         {scan.scan_type.replace('_', ' ')}
                       </span>
                     </div>
@@ -294,12 +294,12 @@ export default function ScansPage() {
                           <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', background: `${riskColor(risk)}15`, color: riskColor(risk), border: `1px solid ${riskColor(risk)}30` }}>
                             {risk}
                           </span>
-                          <span style={{ fontSize: 12, fontFamily: 'var(--font-display)', color: '#e8edf5', fontWeight: 600 }}>
-                            {scan.risk_summary.total} <span style={{ fontSize: 10, color: '#4a5568', fontWeight: 400 }}>vulns</span>
+                          <span style={{ fontSize: 12, fontFamily: 'var(--font-display)', color: 'var(--text-body)', fontWeight: 600 }}>
+                            {scan.risk_summary.total} <span style={{ fontSize: 10, color: 'var(--text-faintest)', fontWeight: 400 }}>vulns</span>
                           </span>
                         </div>
                       ) : (
-                        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>—</span>
+                        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)' }}>—</span>
                       )}
                     </div>
 
@@ -314,7 +314,7 @@ export default function ScansPage() {
                       {/* Retry */}
                       {canRetry && (
                         <button disabled={acting} onClick={() => handleRetry(scan.id)}
-                          style={{ padding: '5px 9px', borderRadius: 6, background: 'rgba(0,229,204,.08)', border: '1px solid rgba(0,229,204,.2)', color: '#00e5cc', cursor: acting ? 'not-allowed' : 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          style={{ padding: '5px 9px', borderRadius: 6, background: 'rgba(0,229,204,.08)', border: '1px solid rgba(0,229,204,.2)', color: 'var(--accent-text)', cursor: acting ? 'not-allowed' : 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
                           <RefreshCw size={12} /> Retry
                         </button>
                       )}
@@ -329,16 +329,16 @@ export default function ScansPage() {
                             ? `/scans/web?scanId=${scan.id}`
                             : `/scans/${scan.scan_type}/${scan.id}`
                         }>
-                          <button style={{ padding: '5px 9px', borderRadius: 6, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', color: '#e8edf5', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <button style={{ padding: '5px 9px', borderRadius: 6, background: 'var(--border-default)', border: '1px solid rgba(255,255,255,.1)', color: 'var(--text-body)', cursor: 'pointer', fontSize: 11, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
                             <ExternalLink size={12} /> View
                           </button>
                         </Link>
                       )}
                       {/* Delete */}
                       <button disabled={acting} onClick={() => handleDelete(scan.id)}
-                        style={{ padding: '5px', borderRadius: 6, background: 'transparent', border: '1px solid transparent', color: '#4a5568', cursor: acting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', transition: 'all .2s' }}
+                        style={{ padding: '5px', borderRadius: 6, background: 'transparent', border: '1px solid transparent', color: 'var(--text-faintest)', cursor: acting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', transition: 'all .2s' }}
                         onMouseEnter={e => { e.currentTarget.style.color = '#ff3355'; e.currentTarget.style.background = 'rgba(255,51,85,.1)' }}
-                        onMouseLeave={e => { e.currentTarget.style.color = '#4a5568'; e.currentTarget.style.background = 'transparent' }}>
+                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-faintest)'; e.currentTarget.style.background = 'transparent' }}>
                         <Trash2 size={14} />
                       </button>
                     </div>

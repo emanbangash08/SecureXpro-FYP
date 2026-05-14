@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -21,7 +21,7 @@ type Vuln = {
 type VulnList = { total: number; critical: number; high: number; medium: number; low: number; items: Vuln[] }
 
 const SEV_COLOR: Record<string, string> = {
-  critical: '#ff2a5f', high: '#ff7a00', medium: '#ffcc00', low: '#10b981', info: '#4a5568',
+  critical: '#ff2a5f', high: '#ff7a00', medium: '#ffcc00', low: '#10b981', info: 'var(--text-faintest)',
 }
 
 function ScanTypeIcon({ type, size = 18 }: { type: string; size?: number }) {
@@ -54,7 +54,7 @@ function PhaseHeader({ num, label, icon, color, count }: {
       }}>{num}</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {icon}
-        <h2 style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', margin: 0, color: '#e8edf5' }}>{label}</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', margin: 0, color: 'var(--text-body)' }}>{label}</h2>
         {count !== undefined && (
           <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color, background: `${color}15`, border: `1px solid ${color}30`, padding: '1px 8px', borderRadius: 10 }}>
             {count} found
@@ -68,9 +68,9 @@ function PhaseHeader({ num, label, icon, color, count }: {
 function EmptyPhase({ message }: { message: string }) {
   return (
     <div style={{
-      background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)',
+      background: 'var(--surface-1)', border: '1px solid rgba(255,255,255,.06)',
       borderRadius: 10, padding: '24px 20px', textAlign: 'center',
-      color: '#4a5568', fontSize: 13, fontFamily: 'var(--font-mono)',
+      color: 'var(--text-faintest)', fontSize: 13, fontFamily: 'var(--font-mono)',
     }}>
       {message}
     </div>
@@ -96,7 +96,7 @@ export default function ScanDetailPage() {
   }, [id])
 
   if (loading) return (
-    <div style={{ padding: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, color: '#8899aa', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+    <div style={{ padding: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
       <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Loading scan...
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
@@ -106,7 +106,7 @@ export default function ScanDetailPage() {
     <div style={{ padding: 60, textAlign: 'center', color: '#ff3355', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
       {error || 'Scan not found'}
       <div style={{ marginTop: 16 }}>
-        <Link href="/scans" style={{ color: '#00e5cc', textDecoration: 'none', fontSize: 12 }}>← Back to scans</Link>
+        <Link href="/scans" style={{ color: 'var(--accent-text)', textDecoration: 'none', fontSize: 12 }}>← Back to scans</Link>
       </div>
     </div>
   )
@@ -129,7 +129,7 @@ export default function ScanDetailPage() {
   const allVulns  = vulns?.items ?? []
 
   const card: React.CSSProperties = {
-    background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.07)',
+    background: 'var(--surface-1)', border: '1px solid rgba(255,255,255,.07)',
     borderRadius: 14, padding: 24,
   }
 
@@ -139,19 +139,19 @@ export default function ScanDetailPage() {
   }
 
   const VulnCard = ({ v }: { v: Vuln }) => {
-    const c = SEV_COLOR[v.severity] ?? '#4a5568'
+    const c = SEV_COLOR[v.severity] ?? 'var(--text-faintest)'
     return (
-      <div style={{ background: 'rgba(255,255,255,.02)', border: `1px solid ${c}25`, borderRadius: 12, overflow: 'hidden', marginBottom: 10 }}>
+      <div style={{ background: 'var(--surface-1)', border: `1px solid ${c}25`, borderRadius: 12, overflow: 'hidden', marginBottom: 10 }}>
         <div style={{ padding: '13px 18px', background: `linear-gradient(90deg,${c}0d,transparent)`, borderBottom: `1px solid ${c}18`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Badge label={v.severity} color={c} />
             <span style={{ fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-display)' }}>{v.title || v.cve_id}</span>
             {v.owasp && <Badge label={v.owasp} color="#a78bfa" />}
             {v.exploit_available && <Badge label="exploit available" color="#ff2a5f" />}
-            {v.cve_id && !v.owasp && <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>{v.cve_id}</span>}
+            {v.cve_id && !v.owasp && <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)' }}>{v.cve_id}</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)' }}>
               {v.affected_host}{v.affected_port ? `:${v.affected_port}` : ''} · {v.affected_service}
             </span>
             <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-display)', color: c }}>
@@ -161,8 +161,8 @@ export default function ScanDetailPage() {
         </div>
         <div style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div>
-            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>Description</div>
-            <p style={{ fontSize: 12, color: '#8899aa', lineHeight: 1.6, margin: 0 }}>{v.description || 'No description available.'}</p>
+            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>Description</div>
+            <p style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6, margin: 0 }}>{v.description || 'No description available.'}</p>
             {v.references.length > 0 && (
               <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {v.references.slice(0, 3).map((ref, i) => (
@@ -175,7 +175,7 @@ export default function ScanDetailPage() {
             )}
           </div>
           <div>
-            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>Remediation</div>
+            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>Remediation</div>
             <div style={{ background: 'rgba(16,185,129,.05)', border: '1px solid rgba(16,185,129,.2)', padding: '10px 12px', borderRadius: 8 }}>
               <p style={{ fontSize: 12, color: '#10b981', lineHeight: 1.5, margin: 0 }}>
                 {v.remediation || 'Upgrade the affected package to the latest version.'}
@@ -190,15 +190,15 @@ export default function ScanDetailPage() {
   const webFindingsList = showWeb ? (webVulns.length > 0 ? webVulns : allVulns.filter(v => !cveVulns.includes(v))) : []
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1200, margin: '0 auto', fontFamily: 'var(--font-ui)', color: '#e8edf5', paddingBottom: 60 }}>
+    <div style={{ padding: '28px 32px', maxWidth: 1200, margin: '0 auto', fontFamily: 'var(--font-ui)', color: 'var(--text-body)', paddingBottom: 60 }}>
 
       {/* Top bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-        <Link href="/scans" style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#8899aa', textDecoration: 'none', fontSize: 13, fontFamily: 'var(--font-mono)' }}>
+        <Link href="/scans" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-dim)', textDecoration: 'none', fontSize: 13, fontFamily: 'var(--font-mono)' }}>
           <ArrowLeft size={15} /> Back to Scans
         </Link>
         <button onClick={() => window.print()}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 8, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', color: '#e8edf5', fontSize: 12, fontFamily: 'var(--font-mono)', cursor: 'pointer' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 8, background: 'var(--border-default)', border: '1px solid rgba(255,255,255,.1)', color: 'var(--text-body)', fontSize: 12, fontFamily: 'var(--font-mono)', cursor: 'pointer' }}>
           <Printer size={14} /> Print Report
         </button>
       </div>
@@ -206,7 +206,7 @@ export default function ScanDetailPage() {
       {/* Header card */}
       <div style={{ ...card, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 20 }}>
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flex: 1 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(255,255,255,.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <ScanTypeIcon type={scanType} />
           </div>
           <div style={{ flex: 1 }}>
@@ -215,9 +215,9 @@ export default function ScanDetailPage() {
                 {scan.target}
               </h1>
               <Badge label={scanType.replace('_', ' ')} color="#00e5cc" />
-              <Badge label={scan.status} color={scan.status === 'completed' ? '#00cc88' : scan.status === 'failed' ? '#ff3355' : '#8899aa'} />
+              <Badge label={scan.status} color={scan.status === 'completed' ? '#00cc88' : scan.status === 'failed' ? '#ff3355' : 'var(--text-dim)'} />
             </div>
-            <div style={{ display: 'flex', gap: 20, fontSize: 12, fontFamily: 'var(--font-mono)', color: '#4a5568', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 20, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Clock size={11} /> Started: {scan.started_at ? new Date(scan.started_at).toLocaleString() : '—'}</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircle2 size={11} /> Finished: {scan.completed_at ? new Date(scan.completed_at).toLocaleString() : '—'}</span>
             </div>
@@ -234,7 +234,7 @@ export default function ScanDetailPage() {
                 {(scan.options as any).aggressive && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,122,0,.1)', border: '1px solid rgba(255,122,0,.2)', color: '#ff7a00', fontFamily: 'var(--font-mono)' }}>Aggressive</span>}
                 {(scan.options as any).udp && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(255,122,0,.1)', border: '1px solid rgba(255,122,0,.2)', color: '#ff7a00', fontFamily: 'var(--font-mono)' }}>UDP</span>}
                 {(scan.options as any).check_sensitive_paths && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(167,139,250,.1)', border: '1px solid rgba(167,139,250,.2)', color: '#a78bfa', fontFamily: 'var(--font-mono)' }}>Path Probing</span>}
-                {(scan.options as any).check_ssl && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(0,229,204,.1)', border: '1px solid rgba(0,229,204,.2)', color: '#00e5cc', fontFamily: 'var(--font-mono)' }}>SSL Checks</span>}
+                {(scan.options as any).check_ssl && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(0,229,204,.1)', border: '1px solid rgba(0,229,204,.2)', color: 'var(--accent-text)', fontFamily: 'var(--font-mono)' }}>SSL Checks</span>}
               </div>
             )}
           </div>
@@ -245,7 +245,7 @@ export default function ScanDetailPage() {
           <div style={{ fontSize: 52, fontWeight: 900, fontFamily: 'var(--font-display)', color: riskClr, lineHeight: 1, textShadow: `0 0 24px ${riskClr}50` }}>
             {maxCvss > 0 ? maxCvss.toFixed(1) : '—'}
           </div>
-          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', marginTop: 4 }}>Max CVSS</div>
+          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px', marginTop: 4 }}>Max CVSS</div>
           {rs && <Badge label={`${rs.overall_risk} risk`} color={riskClr} />}
         </div>
       </div>
@@ -258,11 +258,11 @@ export default function ScanDetailPage() {
             { label: 'High',     value: rs.high,     color: '#ff7a00' },
             { label: 'Medium',   value: rs.medium,   color: '#ffcc00' },
             { label: 'Low',      value: rs.low,      color: '#10b981' },
-            { label: 'Total',    value: rs.total,    color: '#00e5cc' },
+            { label: 'Total',    value: rs.total,    color: 'var(--accent-text)' },
           ].map(s => (
             <div key={s.label} style={{ ...card, textAlign: 'center', padding: '16px 12px' }}>
               <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'var(--font-display)', color: s.color }}>{s.value}</div>
-              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', marginTop: 4 }}>{s.label}</div>
+              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px', marginTop: 4 }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -285,12 +285,12 @@ export default function ScanDetailPage() {
                 <div key={i} style={{ background: 'rgba(77,158,255,.04)', border: '1px solid rgba(77,158,255,.12)', borderRadius: 10, padding: '14px 16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: host.ports?.length ? 12 : 0, flexWrap: 'wrap' }}>
                     <Server size={15} color="#4d9eff" />
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: '#e8edf5', fontWeight: 600 }}>{host.ip}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--text-body)', fontWeight: 600 }}>{host.ip}</span>
                     {host.hostname && host.hostname !== host.ip && (
-                      <span style={{ fontSize: 12, color: '#8899aa', fontFamily: 'var(--font-mono)' }}>({host.hostname})</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>({host.hostname})</span>
                     )}
                     {host.os && <Badge label={host.os} color="#4d9eff" />}
-                    <span style={{ marginLeft: 'auto', fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>
+                    <span style={{ marginLeft: 'auto', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)' }}>
                       {host.ports?.length ?? 0} open port{host.ports?.length !== 1 ? 's' : ''}
                     </span>
                   </div>
@@ -299,10 +299,10 @@ export default function ScanDetailPage() {
                       {host.ports.map((p: any, j: number) => (
                         <div key={j} style={{ padding: '4px 10px', borderRadius: 6, background: 'rgba(77,158,255,.08)', border: '1px solid rgba(77,158,255,.18)', fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4d9eff' }}>
                           <span style={{ fontWeight: 700 }}>{p.port}</span>
-                          <span style={{ color: '#4a5568' }}>/{p.protocol}</span>
+                          <span style={{ color: 'var(--text-faintest)' }}>/{p.protocol}</span>
                           {' '}
-                          <span style={{ color: '#8899aa' }}>{p.service}</span>
-                          {p.version && <span style={{ color: '#4a5568' }}> {p.version}</span>}
+                          <span style={{ color: 'var(--text-dim)' }}>{p.service}</span>
+                          {p.version && <span style={{ color: 'var(--text-faintest)' }}> {p.version}</span>}
                           {p.extra_info && <span style={{ color: '#3a4558' }}> {p.extra_info}</span>}
                         </div>
                       ))}
@@ -323,7 +323,7 @@ export default function ScanDetailPage() {
             color="#ff6b35" icon={<ShieldAlert size={18} color="#ff6b35" />}
             count={cveVulns.length || (showWeb ? undefined : allVulns.length)}
           />
-          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', marginBottom: 16 }}>
             CVE lookup via NIST NVD — matched to discovered services
           </div>
 
@@ -344,7 +344,7 @@ export default function ScanDetailPage() {
             icon={<Globe size={18} color="#a78bfa" />}
             count={webFindingsList.length}
           />
-          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', marginBottom: 16 }}>
             OWASP Top 10 2021 checks — headers, SSL, path probing, CORS, cookie flags
           </div>
 
@@ -359,13 +359,13 @@ export default function ScanDetailPage() {
                 { label: 'Findings',      value: webSummary.total_findings ?? webFindingsList.length },
               ].map((item, i) => (
                 <div key={item.label} style={{ flex: '1 1 140px', padding: '14px 18px', borderRight: i < 4 ? '1px solid rgba(167,139,250,.1)' : 'none' }}>
-                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 5 }}>{item.label}</div>
-                  <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: '#e8edf5' }}>{String(item.value)}</div>
+                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 5 }}>{item.label}</div>
+                  <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-body)' }}>{String(item.value)}</div>
                 </div>
               ))}
               {Array.isArray(webSummary.checks_performed) && webSummary.checks_performed.length > 0 && (
                 <div style={{ width: '100%', padding: '10px 18px', borderTop: '1px solid rgba(167,139,250,.1)' }}>
-                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>Checks Performed</div>
+                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>Checks Performed</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {(webSummary.checks_performed as string[]).map(c => (
                       <span key={c} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: 'rgba(167,139,250,.1)', border: '1px solid rgba(167,139,250,.2)', color: '#a78bfa', fontFamily: 'var(--font-mono)' }}>{c}</span>

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { Download, FileText, Server, Globe, Calendar, FileArchive } from 'lucide-react'
 import Link from 'next/link'
 
@@ -47,7 +47,7 @@ export default function AgentReportsPage() {
 
         {/* List */}
         <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', padding: '14px 24px', borderBottom: '1px solid rgba(255,255,255,.05)', background: '#050709' }}>
+          <div style={{ display: 'flex', padding: '14px 24px', borderBottom: '1px solid rgba(255,255,255,.05)', background: 'var(--surface-input)' }}>
             <div style={{ width: 40 }}></div>
             <div style={{ flex: 2, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Document Info</div>
             <div style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Source</div>

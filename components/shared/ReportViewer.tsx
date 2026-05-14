@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React from 'react'
 import { ShieldAlert, AlertTriangle, CheckCircle2, Info, Server, Globe, Activity, FileText, Target, Zap, LayoutDashboard } from 'lucide-react'
@@ -159,7 +159,7 @@ export default function ReportViewer({ scan, reportMeta }: { scan: any, reportMe
                     <p style={{ fontSize: 13, color: '#a1a1aa', lineHeight: 1.6 }}>{v.description || v.evidence || 'No description provided.'}</p>
                     
                     {(v.url || v.parameter) && (
-                      <div style={{ marginTop: 16, background: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ marginTop: 16, background: 'var(--surface-2)', padding: 12, borderRadius: 8, border: '1px solid rgba(255,255,255,0.05)' }}>
                         <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#818cf8', marginBottom: 4 }}>Endpoint / Parameter</div>
                         <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#fafafa' }}>{v.method} {v.url} {v.parameter ? `?${v.parameter}=...` : ''}</div>
                       </div>

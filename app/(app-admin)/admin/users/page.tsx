@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useCallback, useEffect } from 'react'
 import { Plus, Trash2, RefreshCw, X, Users, UserCheck, UserX, Shield } from 'lucide-react'
@@ -35,7 +35,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
     }
   }
 
-  const inputStyle: React.CSSProperties = { width: '100%', background: '#050709', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '11px 14px', color: '#e8edf5', fontSize: 13, fontFamily: 'var(--font-display)', outline: 'none', boxSizing: 'border-box' }
+  const inputStyle: React.CSSProperties = { width: '100%', background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '11px 14px', color: '#e8edf5', fontSize: 13, fontFamily: 'var(--font-display)', outline: 'none', boxSizing: 'border-box' }
   const labelStyle: React.CSSProperties = { display: 'block', fontSize: 11, fontFamily: 'var(--font-mono)', color: '#8899aa', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '1px' }
 
   return (

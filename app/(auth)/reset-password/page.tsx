@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -83,7 +83,7 @@ function ResetForm() {
           <input
             type="text" placeholder="Paste your reset token"
             value={token} onChange={e => setToken(e.target.value)}
-            style={{ width: '100%', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '14px 16px', color: '#fff', fontSize: 13, fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box', transition: 'all 0.25s' }}
+            style={{ width: '100%', background: 'var(--surface-2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '14px 16px', color: '#fff', fontSize: 13, fontFamily: 'var(--font-mono)', outline: 'none', boxSizing: 'border-box', transition: 'all 0.25s' }}
             onFocus={e => { e.currentTarget.style.borderColor = 'rgba(0,229,204,0.5)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.1)' }}
             onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.boxShadow = 'none' }}
           />
@@ -108,7 +108,7 @@ function ResetForm() {
             <input
               type={showPass ? 'text' : 'password'} placeholder="••••••••"
               value={password} onChange={e => setPassword(e.target.value)}
-              style={{ width: '100%', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '15px 46px 15px 46px', color: '#fff', fontSize: 15, fontFamily: 'var(--font-ui)', outline: 'none', boxSizing: 'border-box', transition: 'all 0.25s' }}
+              style={{ width: '100%', background: 'var(--surface-2)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '15px 46px 15px 46px', color: '#fff', fontSize: 15, fontFamily: 'var(--font-ui)', outline: 'none', boxSizing: 'border-box', transition: 'all 0.25s' }}
               onFocus={e => { e.currentTarget.style.borderColor = 'rgba(0,229,204,0.5)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.1)' }}
               onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.boxShadow = 'none' }}
             />
@@ -129,7 +129,7 @@ function ResetForm() {
             <input
               type={showConfirm ? 'text' : 'password'} placeholder="••••••••"
               value={confirm} onChange={e => setConfirm(e.target.value)}
-              style={{ width: '100%', background: 'rgba(0,0,0,0.25)', border: `1px solid ${confirm ? (confirm === password ? 'rgba(0,204,136,0.4)' : 'rgba(255,51,85,0.3)') : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '15px 46px 15px 46px', color: '#fff', fontSize: 15, fontFamily: 'var(--font-ui)', outline: 'none', boxSizing: 'border-box', transition: 'all 0.25s' }}
+              style={{ width: '100%', background: 'var(--surface-2)', border: `1px solid ${confirm ? (confirm === password ? 'rgba(0,204,136,0.4)' : 'rgba(255,51,85,0.3)') : 'rgba(255,255,255,0.07)'}`, borderRadius: 12, padding: '15px 46px 15px 46px', color: '#fff', fontSize: 15, fontFamily: 'var(--font-ui)', outline: 'none', boxSizing: 'border-box', transition: 'all 0.25s' }}
               onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.1)' }}
               onBlur={e => { e.currentTarget.style.boxShadow = 'none' }}
             />

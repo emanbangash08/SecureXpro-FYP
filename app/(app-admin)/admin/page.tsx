@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
@@ -164,7 +164,7 @@ export default function AdminOverviewPage() {
               </Link>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 90px 90px 110px', background: '#050709', padding: '10px 24px', borderBottom: '1px solid rgba(255,255,255,0.04)', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 90px 90px 110px', background: 'var(--surface-input)', padding: '10px 24px', borderBottom: '1px solid rgba(255,255,255,0.04)', gap: 16 }}>
               {['User', 'Email', 'Role', 'Status', 'Joined'].map(h => (
                 <div key={h} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#3a4a5a', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{h}</div>
               ))}

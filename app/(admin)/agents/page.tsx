@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useCallback, useEffect } from 'react'
 import { Plus, Trash2, Server, Activity, Cpu, Zap, Wifi, Monitor, RefreshCw, X } from 'lucide-react'
 import { api, type AdminUser } from '@/lib/api'
@@ -7,7 +7,7 @@ type AgentUser = AdminUser & { _scan_count?: number }
 
 const STATUS_STYLE: Record<string, { color: string; label: string; pulse: boolean }> = {
   active:   { color: '#00cc88', label: 'Active',   pulse: false },
-  inactive: { color: '#4a5568', label: 'Inactive', pulse: false },
+  inactive: { color: 'var(--text-faintest)', label: 'Inactive', pulse: false },
   banned:   { color: '#ff3355', label: 'Banned',   pulse: false },
 }
 
@@ -34,8 +34,8 @@ function RegisterAgentModal({ onClose, onCreated }: { onClose: () => void; onCre
     }
   }
 
-  const inputStyle: React.CSSProperties = { width: '100%', background: '#050709', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '11px 14px', color: '#e8edf5', fontSize: 13, fontFamily: 'var(--font-display)', outline: 'none', boxSizing: 'border-box' }
-  const labelStyle: React.CSSProperties = { display: 'block', fontSize: 11, fontFamily: 'var(--font-mono)', color: '#8899aa', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '1px' }
+  const inputStyle: React.CSSProperties = { width: '100%', background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '11px 14px', color: 'var(--text-body)', fontSize: 13, fontFamily: 'var(--font-display)', outline: 'none', boxSizing: 'border-box' }
+  const labelStyle: React.CSSProperties = { display: 'block', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-dim)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '1px' }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }} onClick={onClose}>
@@ -43,7 +43,7 @@ function RegisterAgentModal({ onClose, onCreated }: { onClose: () => void; onCre
         <div style={{ height: 2, background: 'linear-gradient(90deg, transparent, #00e5cc, transparent)' }} />
         <div style={{ padding: '24px 28px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: 16, fontFamily: 'var(--font-display)', fontWeight: 700, color: '#fff' }}>Register Agent</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6a7b8a', cursor: 'pointer', display: 'flex' }}><X size={18} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-fainter)', cursor: 'pointer', display: 'flex' }}><X size={18} /></button>
         </div>
         <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           {[
@@ -62,7 +62,7 @@ function RegisterAgentModal({ onClose, onCreated }: { onClose: () => void; onCre
           ))}
           {error && <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#ff3355', background: 'rgba(255,51,85,0.08)', padding: '10px 14px', borderRadius: 8, border: '1px solid rgba(255,51,85,0.2)' }}>{error}</div>}
           <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
-            <button onClick={onClose} style={{ flex: 1, padding: '12px', borderRadius: 9, background: 'transparent', border: '1px solid rgba(255,255,255,.08)', color: '#6a7b8a', fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+            <button onClick={onClose} style={{ flex: 1, padding: '12px', borderRadius: 9, background: 'transparent', border: '1px solid rgba(255,255,255,.08)', color: 'var(--text-fainter)', fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
             <button onClick={submit} disabled={loading}
               style={{ flex: 2, padding: '12px', borderRadius: 9, background: loading ? 'rgba(0,229,204,0.4)' : '#00e5cc', border: 'none', color: '#020a08', fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
               {loading ? 'Registering…' : 'Register Agent'}
@@ -82,7 +82,7 @@ function AgentCard({ agent, onDelete, onToggle }: { agent: AgentUser; onDelete: 
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ background: hovered ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)', border: `1px solid ${hovered ? 'rgba(0,229,204,0.18)' : 'rgba(255,255,255,0.05)'}`, borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 16, transition: 'all .25s ease', transform: hovered ? 'translateY(-2px)' : 'translateY(0)', cursor: 'default', position: 'relative', overflow: 'hidden' }}>
+      style={{ background: hovered ? 'var(--surface-3)' : 'var(--surface-1)', border: `1px solid ${hovered ? 'rgba(0,229,204,0.18)' : 'var(--border-default)'}`, borderRadius: 14, padding: '20px', display: 'flex', flexDirection: 'column', gap: 16, transition: 'all .25s ease', transform: hovered ? 'translateY(-2px)' : 'translateY(0)', cursor: 'default', position: 'relative', overflow: 'hidden' }}>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -91,7 +91,7 @@ function AgentCard({ agent, onDelete, onToggle }: { agent: AgentUser; onDelete: 
           </div>
           <div>
             <div style={{ fontSize: 14, fontFamily: 'var(--font-display)', fontWeight: 700, color: '#d8e3f0' }}>{agent.full_name}</div>
-            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', marginTop: 2 }}>@{agent.username}</div>
+            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', marginTop: 2 }}>@{agent.username}</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20, background: `${st.color}10`, border: `1px solid ${st.color}25` }}>
@@ -107,16 +107,16 @@ function AgentCard({ agent, onDelete, onToggle }: { agent: AgentUser; onDelete: 
           { label: 'Joined',  value: new Date(agent.created_at).toLocaleDateString() },
           { label: 'Last Login', value: agent.last_login ? new Date(agent.last_login).toLocaleDateString() : 'Never' },
         ].map(m => (
-          <div key={m.label} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8, padding: '10px 12px' }}>
-            <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 4 }}>{m.label}</div>
-            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 600, color: '#c8d3e0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.value}</div>
+          <div key={m.label} style={{ background: 'var(--surface-2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8, padding: '10px 12px' }}>
+            <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 4 }}>{m.label}</div>
+            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.value}</div>
           </div>
         ))}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>
-          ID: <span style={{ color: '#6a7b8a' }}>{agent.id.slice(0, 12)}…</span>
+        <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-faintest)' }}>
+          ID: <span style={{ color: 'var(--text-fainter)' }}>{agent.id.slice(0, 12)}…</span>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => onToggle(agent.id, agent.status)}
@@ -124,9 +124,9 @@ function AgentCard({ agent, onDelete, onToggle }: { agent: AgentUser; onDelete: 
             {agent.status === 'active' ? 'Disable' : 'Enable'}
           </button>
           <button onClick={() => onDelete(agent.id)}
-            style={{ padding: '6px', borderRadius: 7, background: 'transparent', border: '1px solid rgba(255,255,255,0.06)', color: '#4a5568', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all .2s' }}
+            style={{ padding: '6px', borderRadius: 7, background: 'transparent', border: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-faintest)', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'all .2s' }}
             onMouseEnter={e => { e.currentTarget.style.color = '#ff3355'; e.currentTarget.style.background = 'rgba(255,51,85,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,51,85,0.2)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#4a5568'; e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)' }}>
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-faintest)'; e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border-default)' }}>
             <Trash2 size={13} />
           </button>
         </div>
@@ -185,17 +185,17 @@ export default function AgentsPage() {
               {online} agents active
             </span>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-display)', letterSpacing: '-.5px', marginBottom: 4 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-strong)', fontFamily: 'var(--font-display)', letterSpacing: '-.5px', marginBottom: 4 }}>
             Agent Management
           </h1>
-          <p style={{ fontSize: 11, color: '#4a5568', fontFamily: 'var(--font-mono)' }}>
+          <p style={{ fontSize: 11, color: 'var(--text-faintest)', fontFamily: 'var(--font-mono)' }}>
             Manage security scanning agents and their access credentials
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={load} style={{ padding: '10px 14px', borderRadius: 9, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#8899aa', fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, transition: 'all .2s' }}
+          <button onClick={load} style={{ padding: '10px 14px', borderRadius: 9, background: 'var(--surface-3)', border: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-dim)', fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, transition: 'all .2s' }}
             onMouseEnter={e => { e.currentTarget.style.color = '#00e5cc'; e.currentTarget.style.borderColor = 'rgba(0,229,204,0.2)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#8899aa'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}>
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-dim)'; e.currentTarget.style.borderColor = 'var(--border-default)' }}>
             <RefreshCw size={13} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} /> Sync All
           </button>
           <button onClick={() => setShowModal(true)} style={{ padding: '10px 18px', borderRadius: 9, background: 'linear-gradient(135deg, #00e5cc, #00bfaa)', border: 'none', color: '#020a08', fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, boxShadow: '0 4px 14px rgba(0,229,204,0.25)' }}>
@@ -212,13 +212,13 @@ export default function AgentsPage() {
           { label: 'Inactive',     val: inactive,       icon: Zap,      col: '#ffcc00' },
           { label: 'Banned',       val: agents.filter(a => a.status === 'banned').length, icon: Cpu, col: '#ff3355' },
         ].map(s => (
-          <div key={s.label} style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.05)', padding: '20px 22px', borderRadius: 13, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div key={s.label} style={{ background: 'var(--surface-1)', border: '1px solid rgba(255,255,255,.05)', padding: '20px 22px', borderRadius: 13, display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ width: 44, height: 44, borderRadius: 12, background: `${s.col}12`, border: `1px solid ${s.col}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <s.icon size={20} color={s.col} />
             </div>
             <div>
               <div style={{ fontSize: 26, fontFamily: 'var(--font-display)', fontWeight: 800, color: s.col, lineHeight: 1, textShadow: `0 0 16px ${s.col}30` }}>{s.val}</div>
-              <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 4 }}>{s.label}</div>
+              <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-fainter)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 4 }}>{s.label}</div>
             </div>
           </div>
         ))}
@@ -226,9 +226,9 @@ export default function AgentsPage() {
 
       {/* Agent Grid */}
       {loading ? (
-        <div style={{ padding: '48px', textAlign: 'center', color: '#4a5568', fontSize: 13, fontFamily: 'var(--font-mono)' }}>Loading agents…</div>
+        <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-faintest)', fontSize: 13, fontFamily: 'var(--font-mono)' }}>Loading agents…</div>
       ) : agents.length === 0 ? (
-        <div style={{ padding: '48px', textAlign: 'center', color: '#4a5568', fontSize: 13, fontFamily: 'var(--font-mono)' }}>
+        <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-faintest)', fontSize: 13, fontFamily: 'var(--font-mono)' }}>
           No agents registered yet. Click "Register Agent" to add one.
         </div>
       ) : (

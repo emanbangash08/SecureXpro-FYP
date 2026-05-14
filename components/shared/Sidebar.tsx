@@ -7,11 +7,12 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Network, Globe, AlertTriangle,
   Server, FileText, Settings, Activity, Shield, LogOut,
-  Zap, ChevronRight,
+  Zap, ChevronRight, Sun, Moon,
 } from 'lucide-react'
 import { useScanContext } from '@/lib/scan-context'
 import { useWebScanContext } from '@/lib/web-scan-context'
 import { api } from '@/lib/api'
+import { useTheme } from '@/lib/theme-context'
 
 const adminNav = [
   { label: 'Dashboard',       href: '/dashboard',       icon: LayoutDashboard },
@@ -20,6 +21,8 @@ const adminNav = [
   { label: 'All Scans',       href: '/scans',           icon: Activity        },
   { label: 'Vulnerabilities', href: '/vulnerabilities', icon: AlertTriangle   },
   { label: 'Reports',         href: '/reports',         icon: FileText        },
+  { label: 'Agents',          href: '/agents',          icon: Server          },
+  { label: 'Settings',        href: '/settings',        icon: Settings        },
 ]
 
 const agentNav = [
@@ -49,6 +52,7 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
   const isScanning = scanCtx?.isScanning ?? false
   const isWebScanning = webCtx?.isScanning ?? false
   const [scanTotal, setScanTotal] = useState<number | null>(null)
+  const { theme, toggleTheme } = useTheme()
 
   // Fetch real scan count; refresh whenever a scan completes (recentScans changes)
   useEffect(() => {
@@ -61,8 +65,9 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
     <aside style={{
       width: 232,
       height: '100vh',
-      background: 'rgba(4,6,12,0.98)',
-      borderRight: '1px solid rgba(255,255,255,0.05)',
+      background: 'var(--sidebar-bg)',
+      borderRight: '1px solid var(--sidebar-border)',
+      color: 'var(--text-primary)',
       display: 'flex',
       flexDirection: 'column',
       position: 'sticky',
@@ -70,10 +75,11 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
       flexShrink: 0,
       backdropFilter: 'blur(20px)',
       WebkitBackdropFilter: 'blur(20px)',
+      transition: 'background-color .2s ease, border-color .2s ease',
     }}>
 
       {/* Logo */}
-      <div style={{ padding: '20px 18px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+      <div style={{ padding: '20px 18px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 36, height: 36, borderRadius: 10,
@@ -85,22 +91,22 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
             <Shield size={18} color="#00e5cc" strokeWidth={1.5} />
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-display)', letterSpacing: '-0.3px' }}>
-              Secure<span style={{ color: '#00e5cc' }}>X</span> Pro
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-strong)', fontFamily: 'var(--font-display)', letterSpacing: '-0.3px' }}>
+              Secure<span style={{ color: 'var(--accent-text)' }}>X</span> Pro
             </div>
-            <div style={{ fontSize: 9, color: '#2a3a4a', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 1 }}>
+            <div style={{ fontSize: 9, color: 'var(--text-quietest)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 1 }}>
               v2.4.1 · {role === 'agent' ? 'Agent View' : 'User Console'}
             </div>
           </div>
         </div>
 
         {/* Live clock */}
-        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)' }}>
+        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: 7, background: 'var(--surface-2)', border: '1px solid var(--border-subtle)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#00cc88', boxShadow: '0 0 6px #00cc88', animation: 'pulse-soft 2s infinite' }} />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.8px' }}>System Live</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>System Live</span>
           </div>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#00e5cc' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-text)' }}>
             <LiveClock />
           </span>
         </div>
@@ -108,7 +114,7 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
 
       {/* Nav Label */}
       <div style={{ padding: '14px 18px 4px' }}>
-        <span style={{ fontSize: 9, color: '#2a3a4a', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Navigation</span>
+        <span style={{ fontSize: 9, color: 'var(--text-quietest)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Navigation</span>
       </div>
 
       {/* Nav Items */}
@@ -128,7 +134,7 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
                   ? 'rgba(0,229,204,0.07)'
                   : active ? 'rgba(0,229,204,0.08)' : 'transparent',
                 border: `1px solid ${scanning ? 'rgba(0,229,204,0.35)' : active ? 'rgba(0,229,204,0.18)' : 'transparent'}`,
-                color: scanning || active ? '#00e5cc' : '#6a7b8a',
+                color: scanning || active ? 'var(--accent-text)' : 'var(--text-fainter)',
                 fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: active || scanning ? 600 : 400,
                 transition: 'all .18s ease',
                 cursor: 'pointer',
@@ -138,14 +144,14 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
               }}
                 onMouseEnter={e => {
                   if (!active && !scanning) {
-                    (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.04)'
-                    ;(e.currentTarget as HTMLDivElement).style.color = '#c8d3e0'
+                    (e.currentTarget as HTMLDivElement).style.background = 'var(--border-subtle)'
+                    ;(e.currentTarget as HTMLDivElement).style.color = 'var(--text-soft)'
                   }
                 }}
                 onMouseLeave={e => {
                   if (!active && !scanning) {
                     (e.currentTarget as HTMLDivElement).style.background = 'transparent'
-                    ;(e.currentTarget as HTMLDivElement).style.color = '#6a7b8a'
+                    ;(e.currentTarget as HTMLDivElement).style.color = 'var(--text-fainter)'
                   }
                 }}
               >
@@ -165,7 +171,7 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
                 {scanning && (
                   <span style={{
                     fontSize: 8, fontFamily: 'var(--font-mono)', padding: '2px 6px', borderRadius: 10,
-                    background: 'rgba(0,229,204,0.15)', color: '#00e5cc',
+                    background: 'rgba(0,229,204,0.15)', color: 'var(--accent-text)',
                     border: '1px solid rgba(0,229,204,0.4)',
                     fontWeight: 700, letterSpacing: '0.5px',
                     animation: 'blink-badge 1s step-end infinite',
@@ -176,7 +182,7 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
                     fontSize: 9, fontFamily: 'var(--font-mono)',
                     padding: '2px 6px', borderRadius: 10,
                     background: isAlert ? 'rgba(255,51,85,0.12)' : 'rgba(0,229,204,0.1)',
-                    color: isAlert ? '#ff3355' : '#00e5cc',
+                    color: isAlert ? '#ff3355' : 'var(--accent-text)',
                     border: `1px solid ${isAlert ? 'rgba(255,51,85,0.25)' : 'rgba(0,229,204,0.2)'}`,
                     fontWeight: 700,
                   }}>{badge}</span>
@@ -190,7 +196,7 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
 
       {/* Section divider */}
       <div style={{ padding: '0 18px', marginBottom: 8 }}>
-        <div style={{ height: 1, background: 'rgba(255,255,255,0.04)' }} />
+        <div style={{ height: 1, background: 'var(--border-subtle)' }} />
       </div>
 
       {/* Threat level indicator */}
@@ -199,47 +205,83 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Zap size={12} color="#ff3355" />
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Threat Level</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px' }}>Threat Level</span>
             </div>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#ff3355', fontWeight: 700 }}>HIGH</span>
           </div>
-          <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ height: 3, background: 'var(--border-default)', borderRadius: 3, overflow: 'hidden' }}>
             <div style={{ width: '78%', height: '100%', background: 'linear-gradient(90deg, #ffcc00, #ff6b35, #ff3355)', borderRadius: 3, boxShadow: '0 0 8px rgba(255,51,85,0.4)' }} />
           </div>
         </div>
       </div>
 
       {/* Footer / User */}
-      <div style={{ padding: '8px 10px 12px', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, marginBottom: 4, background: 'rgba(255,255,255,0.02)' }}>
+      <div style={{ padding: '8px 10px 12px', borderTop: '1px solid var(--border-subtle)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, marginBottom: 4, background: 'var(--surface-1)' }}>
           <div style={{
             width: 32, height: 32, borderRadius: 9,
             background: 'linear-gradient(135deg, rgba(0,229,204,0.2), rgba(0,229,204,0.06))',
             border: '1px solid rgba(0,229,204,0.2)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13, fontWeight: 800, color: '#00e5cc', fontFamily: 'var(--font-display)',
+            fontSize: 13, fontWeight: 800, color: 'var(--accent-text)', fontFamily: 'var(--font-display)',
           }}>
             {(user?.full_name || user?.username || (role === 'agent' ? 'A' : 'U'))[0].toUpperCase()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#c8d3e0', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-soft)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user?.full_name || user?.username || (role === 'agent' ? 'Security Agent' : 'Security Analyst')}
             </div>
-            <div style={{ fontSize: 9, color: '#4a5568', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ fontSize: 9, color: 'var(--text-faintest)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ color: '#00cc88', fontSize: 8 }}>●</span> Online
             </div>
           </div>
         </div>
+        {/* Theme toggle */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6,
+          padding: 3, borderRadius: 9, background: 'var(--surface-1)',
+          border: '1px solid rgba(255,255,255,0.05)',
+        }}>
+          {([
+            { id: 'light', label: 'Light', Icon: Sun },
+            { id: 'dark',  label: 'Dark',  Icon: Moon },
+          ] as const).map(({ id, label, Icon }) => {
+            const sel = theme === id
+            return (
+              <button
+                key={id}
+                onClick={() => { if (!sel) toggleTheme() }}
+                title={`Switch to ${label} mode`}
+                style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  padding: '7px 0', borderRadius: 7, border: 'none',
+                  background: sel ? 'rgba(0,229,204,0.14)' : 'transparent',
+                  color: sel ? 'var(--accent-text)' : 'var(--text-fainter)',
+                  fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: sel ? 700 : 500,
+                  cursor: sel ? 'default' : 'pointer',
+                  transition: 'all .15s ease',
+                  boxShadow: sel ? '0 0 10px rgba(0,229,204,0.18) inset' : 'none',
+                }}
+                onMouseEnter={e => { if (!sel) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-soft)' }}
+                onMouseLeave={e => { if (!sel) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-fainter)' }}
+              >
+                <Icon size={12} />
+                <span>{label}</span>
+              </button>
+            )
+          })}
+        </div>
+
         <button
           onClick={() => { logout(); router.push('/login') }}
           style={{
             width: '100%', display: 'flex', alignItems: 'center', gap: 8,
             padding: '8px 12px', borderRadius: 8, background: 'transparent',
-            border: '1px solid transparent', color: '#4a5568', fontSize: 12,
+            border: '1px solid transparent', color: 'var(--text-faintest)', fontSize: 12,
             fontFamily: 'var(--font-display)', cursor: 'pointer', transition: 'all .15s',
           }}
           onMouseEnter={e => { const b = e.currentTarget; b.style.background = 'rgba(255,51,85,0.07)'; b.style.color = '#ff3355'; b.style.borderColor = 'rgba(255,51,85,0.18)' }}
-          onMouseLeave={e => { const b = e.currentTarget; b.style.background = 'transparent'; b.style.color = '#4a5568'; b.style.borderColor = 'transparent' }}
+          onMouseLeave={e => { const b = e.currentTarget; b.style.background = 'transparent'; b.style.color = 'var(--text-faintest)'; b.style.borderColor = 'transparent' }}
         >
           <LogOut size={14} /> Sign Out
         </button>

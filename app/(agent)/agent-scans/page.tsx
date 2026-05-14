@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState } from 'react'
 import Link from 'next/link'
 import { Search, ChevronRight, Filter, Activity, Server, Globe, CheckCircle2, AlertCircle, Clock, ExternalLink } from 'lucide-react'
@@ -55,7 +55,7 @@ export default function AgentScansPage() {
         
         {/* Filters */}
         <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 12, padding: '16px 20px', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#050709', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 250 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 250 }}>
             <Search size={16} color="#8899aa" />
             <input 
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
@@ -66,7 +66,7 @@ export default function AgentScansPage() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Filter size={16} color="#4a5568" />
-            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as any)} style={{ background: '#050709', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '9px 12px', color: '#8899aa', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', cursor: 'pointer' }}>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as any)} style={{ background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '9px 12px', color: '#8899aa', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', cursor: 'pointer' }}>
               <option value="all" style={{ background: '#07090f', color: '#e8edf5' }}>All Scan Types</option>
               <option value="network" style={{ background: '#07090f', color: '#e8edf5' }}>Network Scans</option>
               <option value="web" style={{ background: '#07090f', color: '#e8edf5' }}>Web Scans</option>
@@ -75,7 +75,7 @@ export default function AgentScansPage() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Activity size={16} color="#4a5568" />
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} style={{ background: '#050709', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '9px 12px', color: '#8899aa', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', cursor: 'pointer' }}>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} style={{ background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '9px 12px', color: '#8899aa', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', cursor: 'pointer' }}>
               <option value="all" style={{ background: '#07090f', color: '#e8edf5' }}>All Statuses</option>
               <option value="pending" style={{ background: '#07090f', color: '#e8edf5' }}>Pending</option>
               <option value="running" style={{ background: '#07090f', color: '#e8edf5' }}>Running</option>
@@ -91,7 +91,7 @@ export default function AgentScansPage() {
 
         {/* List */}
         <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,.05)', background: '#050709' }}>
+          <div style={{ display: 'flex', padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,.05)', background: 'var(--surface-input)' }}>
             <div style={{ width: 40 }}></div>
             <div style={{ flex: 2, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Assessment Details</div>
             <div style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Status</div>

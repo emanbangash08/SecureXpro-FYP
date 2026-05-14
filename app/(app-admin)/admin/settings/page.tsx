@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { Save, Bell, Settings2, Shield, CheckCircle2 } from 'lucide-react'
@@ -55,7 +55,7 @@ export default function AdminSettingsPage() {
     { id: 'scan',          label: 'Scan Defaults', icon: Shield    },
   ] as const
 
-  const inputStyle: React.CSSProperties = { width: '100%', background: '#050709', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '12px 16px', color: '#e8edf5', fontSize: 13, fontFamily: 'var(--font-display)', outline: 'none', boxSizing: 'border-box' }
+  const inputStyle: React.CSSProperties = { width: '100%', background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '12px 16px', color: '#e8edf5', fontSize: 13, fontFamily: 'var(--font-display)', outline: 'none', boxSizing: 'border-box' }
   const labelStyle: React.CSSProperties = { display: 'block', fontSize: 11, fontFamily: 'var(--font-mono)', color: '#6a7b8a', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '1px' }
 
   return (
@@ -118,13 +118,13 @@ export default function AdminSettingsPage() {
                   <h2 style={{ fontSize: 15, fontFamily: 'var(--font-display)', fontWeight: 600, color: '#e8edf5', marginBottom: 24 }}>Notification Preferences</h2>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 560 }}>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#050709', padding: '16px 20px', borderRadius: 10, border: '1px solid rgba(255,255,255,.06)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--surface-input)', padding: '16px 20px', borderRadius: 10, border: '1px solid rgba(255,255,255,.06)' }}>
                       <div>
                         <div style={{ fontSize: 14, fontFamily: 'var(--font-display)', fontWeight: 600, color: '#e8edf5', marginBottom: 3 }}>Email Notifications</div>
                         <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>Global alerts via email</div>
                       </div>
                       <div onClick={() => setSettings(s => ({ ...s, email_notifications: !s.email_notifications }))} style={{ width: 44, height: 24, borderRadius: 12, background: settings.email_notifications ? '#a855f7' : '#4a5568', position: 'relative', cursor: 'pointer', transition: 'background .2s', flexShrink: 0 }}>
-                        <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#050709', position: 'absolute', top: 3, left: settings.email_notifications ? 23 : 3, transition: 'left .2s' }} />
+                        <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--surface-input)', position: 'absolute', top: 3, left: settings.email_notifications ? 23 : 3, transition: 'left .2s' }} />
                       </div>
                     </div>
 

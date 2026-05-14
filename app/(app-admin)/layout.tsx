@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
@@ -40,15 +40,17 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
   if (isLoading || !user || user.role !== 'admin') return null
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: '#03050a', overflow: 'hidden', fontFamily: 'var(--font-ui)' }}>
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg-base)', overflow: 'hidden', fontFamily: 'var(--font-ui)' }}>
 
       {/* ── Sidebar ────────────────────────────────────────── */}
       <aside style={{
         width: 232, height: '100vh', flexShrink: 0,
-        background: 'rgba(5,3,15,0.98)',
-        borderRight: '1px solid rgba(168,85,247,0.1)',
+        background: 'var(--sidebar-bg)',
+        borderRight: '1px solid var(--sidebar-border)',
+        color: 'var(--text-primary)',
         display: 'flex', flexDirection: 'column',
         backdropFilter: 'blur(20px)',
+        transition: 'background-color .2s ease, border-color .2s ease',
       }}>
 
         {/* Logo */}
@@ -64,10 +66,10 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
               <Shield size={18} color="#a855f7" strokeWidth={1.5} />
             </div>
             <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', fontFamily: 'var(--font-display)', letterSpacing: '-0.3px' }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-strong)', fontFamily: 'var(--font-display)', letterSpacing: '-0.3px' }}>
                 Secure<span style={{ color: '#a855f7' }}>X</span> Pro
               </div>
-              <div style={{ fontSize: 9, color: '#4a3a6a', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 1 }}>
+              <div style={{ fontSize: 9, color: 'var(--text-fainter)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 1 }}>
                 v2.4.1 · Admin Console
               </div>
             </div>
@@ -76,7 +78,7 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: 7, background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.1)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 6px #a855f7', animation: 'pulse-soft 2s infinite' }} />
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#6a4a8a', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Admin Active</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-fainter)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Admin Active</span>
             </div>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#a855f7' }}><LiveClock /></span>
           </div>
@@ -84,7 +86,7 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
 
         {/* Nav label */}
         <div style={{ padding: '14px 18px 4px' }}>
-          <span style={{ fontSize: 9, color: '#3a2a5a', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Management</span>
+          <span style={{ fontSize: 9, color: 'var(--text-faintest)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Management</span>
         </div>
 
         {/* Nav items */}
@@ -99,12 +101,12 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
                     padding: '9px 10px', borderRadius: 9,
                     background: active ? 'rgba(168,85,247,0.1)' : 'transparent',
                     border: `1px solid ${active ? 'rgba(168,85,247,0.25)' : 'transparent'}`,
-                    color: active ? '#a855f7' : '#6a7b8a',
+                    color: active ? '#a855f7' : 'var(--text-fainter)',
                     fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: active ? 600 : 400,
                     transition: 'all .18s ease', cursor: 'pointer', position: 'relative',
                   }}
                   onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLDivElement).style.background = 'rgba(168,85,247,0.05)'; (e.currentTarget as HTMLDivElement).style.color = '#c084fc' } }}
-                  onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; (e.currentTarget as HTMLDivElement).style.color = '#6a7b8a' } }}
+                  onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; (e.currentTarget as HTMLDivElement).style.color = 'var(--text-fainter)' } }}
                 >
                   {active && (
                     <div style={{ position: 'absolute', left: -10, top: '50%', transform: 'translateY(-50%)', width: 3, height: 16, background: '#a855f7', borderRadius: '0 2px 2px 0', boxShadow: '0 0 8px rgba(168,85,247,0.7)' }} />
@@ -129,11 +131,11 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Zap size={12} color="#a855f7" />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: '#4a3a6a', textTransform: 'uppercase', letterSpacing: '1px' }}>System</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-fainter)', textTransform: 'uppercase', letterSpacing: '1px' }}>System</span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#00cc88', fontWeight: 700 }}>ONLINE</span>
             </div>
-            <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ height: 3, background: 'var(--border-default)', borderRadius: 3, overflow: 'hidden' }}>
               <div style={{ width: '100%', height: '100%', background: 'linear-gradient(90deg, #a855f7, #7c3aed)', borderRadius: 3, boxShadow: '0 0 8px rgba(168,85,247,0.4)' }} />
             </div>
           </div>
@@ -146,19 +148,19 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
               {user.full_name?.[0]?.toUpperCase() ?? 'A'}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#c8d3e0', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-soft)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {user.full_name || user.username}
               </div>
-              <div style={{ fontSize: 9, color: '#4a3a6a', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ fontSize: 9, color: 'var(--text-fainter)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <span style={{ color: '#a855f7', fontSize: 8 }}>●</span> Super Admin
               </div>
             </div>
           </div>
           <button
             onClick={() => { logout(); router.push('/login') }}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'transparent', border: '1px solid transparent', color: '#4a5568', fontSize: 12, fontFamily: 'var(--font-display)', cursor: 'pointer', transition: 'all .15s' }}
-            onMouseEnter={e => { const b = e.currentTarget; b.style.background = 'rgba(255,51,85,0.07)'; b.style.color = '#ff3355'; b.style.borderColor = 'rgba(255,51,85,0.18)' }}
-            onMouseLeave={e => { const b = e.currentTarget; b.style.background = 'transparent'; b.style.color = '#4a5568'; b.style.borderColor = 'transparent' }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'transparent', border: '1px solid transparent', color: 'var(--text-faintest)', fontSize: 12, fontFamily: 'var(--font-display)', cursor: 'pointer', transition: 'all .15s' }}
+            onMouseEnter={e => { const b = e.currentTarget; b.style.background = 'rgba(255,51,85,0.10)'; b.style.color = '#ff3355'; b.style.borderColor = 'rgba(255,51,85,0.18)' }}
+            onMouseLeave={e => { const b = e.currentTarget; b.style.background = 'transparent'; b.style.color = 'var(--text-faintest)'; b.style.borderColor = 'transparent' }}
           >
             <LogOut size={14} /> Sign Out
           </button>
