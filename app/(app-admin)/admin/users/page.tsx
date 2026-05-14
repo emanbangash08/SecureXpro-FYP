@@ -1,8 +1,25 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
-import { Plus, Trash2, RefreshCw, X, Users, UserCheck, UserX, Shield } from 'lucide-react'
+import { Plus, Trash2, RefreshCw, X, Users, UserCheck, UserX, Shield, CheckCircle2, AlertCircle, Search } from 'lucide-react'
 import { api, type AdminUser } from '@/lib/api'
+
+function Toast({ msg, ok }: { msg: string; ok: boolean }) {
+  return (
+    <div style={{
+      position: 'fixed', bottom: 28, right: 28, zIndex: 200,
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '12px 20px', borderRadius: 10,
+      background: ok ? 'rgba(0,204,136,0.12)' : 'rgba(255,51,85,0.12)',
+      border: `1px solid ${ok ? 'rgba(0,204,136,0.3)' : 'rgba(255,51,85,0.3)'}`,
+      color: ok ? '#00cc88' : '#ff3355',
+      fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 600,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.3)', animation: 'fade-in-up .2s ease',
+    }}>
+      {ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />} {msg}
+    </div>
+  )
+}
 
 const STATUS_COLOR: Record<string, { color: string; label: string }> = {
   active:   { color: '#00cc88', label: 'Active'   },
@@ -99,16 +116,26 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
 }
 
 export default function AdminUsersPage() {
-  const [users,     setUsers]     = useState<AdminUser[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [filter,    setFilter]    = useState<'all' | 'admin' | 'user' | 'agent'>('all')
+  const [users,      setUsers]      = useState<AdminUser[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [showModal,  setShowModal]  = useState(false)
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'user' | 'agent'>('all')
+  const [search,     setSearch]     = useState('')
+  const [statusFilt, setStatusFilt] = useState('')
+  const [dateFrom,   setDateFrom]   = useState('')
+  const [dateTo,     setDateTo]     = useState('')
+  const [toast,      setToast]      = useState<{ msg: string; ok: boolean } | null>(null)
+
+  const showToast = (msg: string, ok = true) => {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 3000)
+  }
 
   const load = useCallback(() => {
     setLoading(true)
     api.admin.listUsers()
       .then(setUsers)
-      .catch(() => {})
+      .catch((e: any) => showToast(e.message ?? 'Failed to load users', false))
       .finally(() => setLoading(false))
   }, [])
 
@@ -119,7 +146,8 @@ export default function AdminUsersPage() {
     try {
       await api.admin.deleteUser(id)
       setUsers(prev => prev.filter(u => u.id !== id))
-    } catch (e: any) { alert(e.message ?? 'Failed to delete') }
+      showToast('User deleted')
+    } catch (e: any) { showToast(e.message ?? 'Failed to delete', false) }
   }
 
   const handleToggleStatus = async (id: string, status: string) => {
@@ -127,17 +155,37 @@ export default function AdminUsersPage() {
     try {
       const updated = await api.admin.updateUser(id, { status: next })
       setUsers(prev => prev.map(u => u.id === id ? updated : u))
-    } catch (e: any) { alert(e.message ?? 'Failed to update') }
+      showToast(`User ${next === 'active' ? 'enabled' : 'disabled'}`)
+    } catch (e: any) { showToast(e.message ?? 'Failed to update status', false) }
   }
 
   const handleUpdateRole = async (id: string, role: string) => {
     try {
       const updated = await api.admin.updateUser(id, { role })
       setUsers(prev => prev.map(u => u.id === id ? updated : u))
-    } catch (e: any) { alert(e.message ?? 'Failed to update role') }
+      showToast('Role updated')
+    } catch (e: any) { showToast(e.message ?? 'Failed to update role', false) }
   }
 
-  const filtered = filter === 'all' ? users : users.filter(u => u.role === filter)
+  const filtered = users.filter(u => {
+    if (roleFilter !== 'all' && u.role !== roleFilter) return false
+    if (statusFilt && u.status !== statusFilt) return false
+    if (search) {
+      const q = search.toLowerCase()
+      if (!u.full_name?.toLowerCase().includes(q) &&
+          !u.username.toLowerCase().includes(q) &&
+          !u.email.toLowerCase().includes(q)) return false
+    }
+    if (dateFrom) {
+      const from = new Date(dateFrom + 'T00:00:00.000Z').getTime()
+      if (new Date(u.created_at).getTime() < from) return false
+    }
+    if (dateTo) {
+      const to = new Date(dateTo + 'T23:59:59.999Z').getTime()
+      if (new Date(u.created_at).getTime() > to) return false
+    }
+    return true
+  })
 
   const counts = {
     all:   users.length,
@@ -145,6 +193,8 @@ export default function AdminUsersPage() {
     user:  users.filter(u => u.role === 'user').length,
     agent: users.filter(u => u.role === 'agent').length,
   }
+
+  const activeFilterCount = [search, statusFilt, dateFrom, dateTo].filter(Boolean).length
 
   return (
     <div style={{ padding: '28px 32px', maxWidth: 1300, margin: '0 auto', fontFamily: 'var(--font-ui)' }}>
@@ -173,8 +223,8 @@ export default function AdminUsersPage() {
           { key: 'user',  label: 'Users',  icon: UserCheck, color: '#00e5cc' },
           { key: 'agent', label: 'Agents', icon: UserX,     color: '#4d9eff' },
         ] as const).map(s => (
-          <button key={s.key} onClick={() => setFilter(s.key)}
-            style={{ background: filter === s.key ? `${s.color}10` : 'var(--bg-surface)', border: `1px solid ${filter === s.key ? s.color + '30' : 'var(--border-subtle)'}`, borderRadius: 12, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', transition: 'all .2s', textAlign: 'left' }}>
+          <button key={s.key} onClick={() => setRoleFilter(s.key)}
+            style={{ background: roleFilter === s.key ? `${s.color}10` : 'var(--bg-surface)', border: `1px solid ${roleFilter === s.key ? s.color + '30' : 'var(--border-subtle)'}`, borderRadius: 12, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', transition: 'all .2s', textAlign: 'left' }}>
             <s.icon size={18} color={s.color} />
             <div>
               <div style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 800, color: s.color, lineHeight: 1 }}>{counts[s.key]}</div>
@@ -184,10 +234,62 @@ export default function AdminUsersPage() {
         ))}
       </div>
 
+      {/* Filter bar */}
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 14, padding: '14px 18px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+          {/* Search */}
+          <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
+            <Search size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search name, username, email…"
+              style={{ width: '100%', background: 'var(--surface-input)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '9px 14px 9px 34px', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'var(--font-display)', outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+
+          {/* Status filter */}
+          <select value={statusFilt} onChange={e => setStatusFilt(e.target.value)}
+            style={{ background: 'var(--surface-input)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '9px 14px', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'var(--font-display)', outline: 'none', cursor: 'pointer' }}>
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="banned">Banned</option>
+          </select>
+        </div>
+
+        {/* Date row */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Joined from</span>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            style={{ background: 'var(--surface-input)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '8px 12px', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'var(--font-display)', outline: 'none', colorScheme: 'inherit' }} />
+          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>to</span>
+          <input type="date" value={dateTo} min={dateFrom || undefined} onChange={e => setDateTo(e.target.value)}
+            style={{ background: 'var(--surface-input)', border: '1px solid var(--border-default)', borderRadius: 8, padding: '8px 12px', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'var(--font-display)', outline: 'none', colorScheme: 'inherit' }} />
+
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            {activeFilterCount > 0 && (
+              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '3px 8px', borderRadius: 5, background: 'rgba(0,229,204,0.1)', color: 'var(--accent-text)', border: '1px solid rgba(0,229,204,0.2)' }}>
+                {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} active
+              </span>
+            )}
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+              {filtered.length} of {users.length} shown
+            </span>
+            {activeFilterCount > 0 && (
+              <button onClick={() => { setSearch(''); setStatusFilt(''); setDateFrom(''); setDateTo('') }}
+                style={{ padding: '7px 12px', borderRadius: 7, background: 'transparent', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-mono)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <X size={11} /> Clear
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Table */}
       <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 14, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.5fr 90px 90px 110px 160px', background: 'var(--bg-overlay)', padding: '12px 20px', borderBottom: '1px solid var(--border-subtle)', gap: 16 }}>
-          {['User', 'Email', 'Role', 'Status', 'Joined', 'Actions'].map(h => (
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.4fr 80px 80px 60px 100px 110px 150px', background: 'var(--bg-overlay)', padding: '12px 20px', borderBottom: '1px solid var(--border-subtle)', gap: 12 }}>
+          {['User', 'Email', 'Role', 'Status', 'Scans', 'Joined', 'Last Login', 'Actions'].map(h => (
             <div key={h} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{h}</div>
           ))}
         </div>
@@ -199,7 +301,7 @@ export default function AdminUsersPage() {
         ) : filtered.map((u, i) => {
           const st = STATUS_COLOR[u.status] ?? STATUS_COLOR.inactive
           return (
-            <div key={u.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.5fr 90px 90px 110px 160px', alignItems: 'center', padding: '14px 20px', borderBottom: i < filtered.length - 1 ? '1px solid var(--border-subtle)' : 'none', gap: 16, transition: 'background .15s' }}
+            <div key={u.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.4fr 80px 80px 60px 100px 110px 150px', alignItems: 'center', padding: '14px 20px', borderBottom: i < filtered.length - 1 ? '1px solid var(--border-subtle)' : 'none', gap: 12, transition: 'background .15s' }}
               onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = 'var(--bg-elevated)'}
               onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = 'transparent'}>
 
@@ -224,8 +326,16 @@ export default function AdminUsersPage() {
                 {st.label}
               </div>
 
+              <div style={{ fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--accent-text)', textAlign: 'center' }}>
+                {u.scan_count ?? 0}
+              </div>
+
               <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
                 {new Date(u.created_at).toLocaleDateString()}
+              </div>
+
+              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: u.last_login ? 'var(--text-muted)' : 'var(--text-quietest)' }}>
+                {u.last_login ? new Date(u.last_login).toLocaleDateString() : '—'}
               </div>
 
               <div style={{ display: 'flex', gap: 6 }}>
@@ -245,7 +355,9 @@ export default function AdminUsersPage() {
         })}
       </div>
 
-      {showModal && <CreateUserModal onClose={() => setShowModal(false)} onCreated={load} />}
+      {showModal && <CreateUserModal onClose={() => setShowModal(false)} onCreated={() => { load(); showToast('User created successfully') }} />}
+
+      {toast && <Toast msg={toast.msg} ok={toast.ok} />}
 
       <style>{`
         @keyframes fade-in-up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}

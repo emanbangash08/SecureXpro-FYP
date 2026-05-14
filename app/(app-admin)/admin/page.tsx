@@ -23,12 +23,14 @@ export default function AdminOverviewPage() {
   const [stats,   setStats]   = useState<AdminStats | null>(null)
   const [users,   setUsers]   = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
+    setError(null)
     Promise.all([api.admin.stats(), api.admin.listUsers()])
       .then(([s, u]) => { setStats(s); setUsers(u) })
-      .catch(() => {})
+      .catch((e: any) => setError(e.message ?? 'Failed to load analytics'))
       .finally(() => setLoading(false))
   }
 
@@ -63,7 +65,11 @@ export default function AdminOverviewPage() {
         </button>
       </div>
 
-      {loading && !stats ? (
+      {error ? (
+        <div style={{ textAlign: 'center', padding: 60, color: '#ff3355', fontFamily: 'var(--font-mono)', fontSize: 13, background: 'rgba(255,51,85,0.05)', borderRadius: 14, border: '1px solid rgba(255,51,85,0.15)' }}>
+          <AlertTriangle size={20} style={{ marginBottom: 10, opacity: 0.7 }} /><br />{error}
+        </div>
+      ) : loading && !stats ? (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>Loading analytics…</div>
       ) : (
         <>

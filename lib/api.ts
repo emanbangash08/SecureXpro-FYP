@@ -79,9 +79,11 @@ export interface AdminStats {
   }
   scans: {
     total: number
+    pending: number
     running: number
     completed: number
     failed: number
+    cancelled: number
   }
   vulnerabilities: {
     total: number
@@ -101,6 +103,61 @@ export interface AdminUser {
   status: 'active' | 'inactive' | 'banned'
   created_at: string
   last_login: string | null
+  scan_count?: number
+}
+
+export interface AdminUserDetail extends AdminUser {
+  scan_count: number
+  completed_scans: number
+  failed_scans: number
+  running_scans: number
+  updated_at: string | null
+}
+
+export interface AdminScan {
+  id: string
+  user_id: string
+  username: string
+  user_email: string
+  target: string
+  scan_type: string
+  status: string
+  options: Record<string, unknown>
+  current_phase: string | null
+  risk_summary: {
+    total: number
+    critical: number
+    high: number
+    medium: number
+    low: number
+    info: number
+    max_cvss_score: number
+    overall_risk: string
+  } | null
+  exploit_count: number
+  vuln_count: number
+  error: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+  vulnerabilities?: Array<{
+    id: string
+    cve_id: string
+    title: string
+    severity: string
+    cvss_score: number
+    affected_host: string
+    affected_service: string
+    affected_port: number | null
+    exploit_available: boolean
+    remediation: string
+    owasp: string | null
+  }>
+}
+
+export interface AdminScanListOut {
+  total: number
+  items: AdminScan[]
 }
 
 export interface ScanDefaults {
@@ -292,6 +349,8 @@ export const api = {
 
   admin: {
     listUsers: () => request<AdminUser[]>('/api/v1/admin/users'),
+    getUserDetail: (userId: string) =>
+      request<AdminUserDetail>(`/api/v1/admin/users/${userId}/detail`),
     updateUser: (userId: string, data: { role?: string; status?: string }) =>
       request<AdminUser>(`/api/v1/admin/users/${userId}`, {
         method: 'PATCH',
@@ -300,6 +359,27 @@ export const api = {
     deleteUser: (userId: string) =>
       request<void>(`/api/v1/admin/users/${userId}`, { method: 'DELETE' }),
     stats: () => request<AdminStats>('/api/v1/admin/stats'),
+    listScans: (params?: {
+      skip?: number; limit?: number
+      status?: string; scan_type?: string; user_id?: string
+      search?: string; date_from?: string; date_to?: string
+      risk?: string; has_exploits?: boolean
+    }) => {
+      const qs = new URLSearchParams()
+      if (params?.skip        != null)     qs.set('skip',         String(params.skip))
+      if (params?.limit       != null)     qs.set('limit',        String(params.limit))
+      if (params?.status)                  qs.set('status',       params.status)
+      if (params?.scan_type)               qs.set('scan_type',    params.scan_type)
+      if (params?.user_id)                 qs.set('user_id',      params.user_id)
+      if (params?.search)                  qs.set('search',       params.search)
+      if (params?.date_from)               qs.set('date_from',    params.date_from)
+      if (params?.date_to)                 qs.set('date_to',      params.date_to)
+      if (params?.risk)                    qs.set('risk',         params.risk)
+      if (params?.has_exploits != null)    qs.set('has_exploits', String(params.has_exploits))
+      return request<AdminScanListOut>(`/api/v1/admin/scans?${qs.toString()}`)
+    },
+    getScan: (scanId: string) =>
+      request<AdminScan>(`/api/v1/admin/scans/${scanId}`),
   },
 
   settings: {

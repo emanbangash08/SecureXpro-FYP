@@ -7,12 +7,13 @@ import { useAuth } from '@/lib/auth-context'
 import { useTheme } from '@/lib/theme-context'
 import {
   LayoutDashboard, Users, Settings, LogOut,
-  Shield, ChevronRight, Zap, Sun, Moon,
+  Shield, ChevronRight, Zap, Sun, Moon, ScanLine,
 } from 'lucide-react'
 
 const NAV = [
   { label: 'Overview',  href: '/admin',          icon: LayoutDashboard },
   { label: 'Users',     href: '/admin/users',     icon: Users           },
+  { label: 'Scans',     href: '/admin/scans',     icon: ScanLine        },
   { label: 'Settings',  href: '/admin/settings',  icon: Settings        },
 ]
 
