@@ -1,12 +1,13 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
+import { useTheme } from '@/lib/theme-context'
 import {
   LayoutDashboard, Users, Settings, LogOut,
-  Shield, ChevronRight, Zap,
+  Shield, ChevronRight, Zap, Sun, Moon,
 } from 'lucide-react'
 
 const NAV = [
@@ -30,6 +31,7 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
   const { user, isLoading, logout } = useAuth()
   const router   = useRouter()
   const pathname = usePathname()
+  const { theme, toggleTheme } = useTheme()
 
   useEffect(() => {
     if (isLoading) return
@@ -50,43 +52,44 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
         color: 'var(--text-primary)',
         display: 'flex', flexDirection: 'column',
         backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         transition: 'background-color .2s ease, border-color .2s ease',
       }}>
 
         {/* Logo */}
-        <div style={{ padding: '20px 18px 14px', borderBottom: '1px solid rgba(168,85,247,0.08)' }}>
+        <div style={{ padding: '20px 18px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{
               width: 36, height: 36, borderRadius: 10,
-              background: 'linear-gradient(135deg, rgba(168,85,247,0.2), rgba(168,85,247,0.06))',
-              border: '1px solid rgba(168,85,247,0.3)',
+              background: 'linear-gradient(135deg, rgba(0,229,204,0.18), rgba(0,229,204,0.06))',
+              border: '1px solid rgba(0,229,204,0.25)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 16px rgba(168,85,247,0.15)',
+              boxShadow: '0 0 16px rgba(0,229,204,0.12)',
             }}>
-              <Shield size={18} color="#a855f7" strokeWidth={1.5} />
+              <Shield size={18} color="#00e5cc" strokeWidth={1.5} />
             </div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-strong)', fontFamily: 'var(--font-display)', letterSpacing: '-0.3px' }}>
-                Secure<span style={{ color: '#a855f7' }}>X</span> Pro
+                Secure<span style={{ color: 'var(--accent-text)' }}>X</span> Pro
               </div>
-              <div style={{ fontSize: 9, color: 'var(--text-fainter)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 1 }}>
+              <div style={{ fontSize: 9, color: 'var(--text-quietest)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 1 }}>
                 v2.4.1 · Admin Console
               </div>
             </div>
           </div>
 
-          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: 7, background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.1)' }}>
+          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: 7, background: 'var(--surface-2)', border: '1px solid var(--border-subtle)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 6px #a855f7', animation: 'pulse-soft 2s infinite' }} />
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-fainter)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Admin Active</span>
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#00cc88', boxShadow: '0 0 6px #00cc88', animation: 'pulse-soft 2s infinite' }} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Admin Active</span>
             </div>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#a855f7' }}><LiveClock /></span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-text)' }}><LiveClock /></span>
           </div>
         </div>
 
         {/* Nav label */}
         <div style={{ padding: '14px 18px 4px' }}>
-          <span style={{ fontSize: 9, color: 'var(--text-faintest)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Management</span>
+          <span style={{ fontSize: 9, color: 'var(--text-quietest)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.5px' }}>Management</span>
         </div>
 
         {/* Nav items */}
@@ -99,17 +102,17 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '9px 10px', borderRadius: 9,
-                    background: active ? 'rgba(168,85,247,0.1)' : 'transparent',
-                    border: `1px solid ${active ? 'rgba(168,85,247,0.25)' : 'transparent'}`,
-                    color: active ? '#a855f7' : 'var(--text-fainter)',
+                    background: active ? 'rgba(0,229,204,0.08)' : 'transparent',
+                    border: `1px solid ${active ? 'rgba(0,229,204,0.18)' : 'transparent'}`,
+                    color: active ? 'var(--accent-text)' : 'var(--text-fainter)',
                     fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: active ? 600 : 400,
                     transition: 'all .18s ease', cursor: 'pointer', position: 'relative',
                   }}
-                  onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLDivElement).style.background = 'rgba(168,85,247,0.05)'; (e.currentTarget as HTMLDivElement).style.color = '#c084fc' } }}
+                  onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLDivElement).style.background = 'var(--border-subtle)'; (e.currentTarget as HTMLDivElement).style.color = 'var(--text-soft)' } }}
                   onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; (e.currentTarget as HTMLDivElement).style.color = 'var(--text-fainter)' } }}
                 >
                   {active && (
-                    <div style={{ position: 'absolute', left: -10, top: '50%', transform: 'translateY(-50%)', width: 3, height: 16, background: '#a855f7', borderRadius: '0 2px 2px 0', boxShadow: '0 0 8px rgba(168,85,247,0.7)' }} />
+                    <div style={{ position: 'absolute', left: -10, top: '50%', transform: 'translateY(-50%)', width: 3, height: 16, background: '#00e5cc', borderRadius: '0 2px 2px 0', boxShadow: '0 0 8px rgba(0,229,204,0.6)' }} />
                   )}
                   <Icon size={15} style={{ flexShrink: 0 }} />
                   <span style={{ flex: 1 }}>{label}</span>
@@ -122,40 +125,77 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
 
         {/* Divider */}
         <div style={{ padding: '0 18px', marginBottom: 8 }}>
-          <div style={{ height: 1, background: 'rgba(168,85,247,0.08)' }} />
+          <div style={{ height: 1, background: 'var(--border-subtle)' }} />
         </div>
 
         {/* System status */}
         <div style={{ padding: '0 10px', marginBottom: 10 }}>
-          <div style={{ padding: '10px 12px', borderRadius: 9, background: 'rgba(168,85,247,0.05)', border: '1px solid rgba(168,85,247,0.12)' }}>
+          <div style={{ padding: '10px 12px', borderRadius: 9, background: 'rgba(0,229,204,0.04)', border: '1px solid rgba(0,229,204,0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Zap size={12} color="#a855f7" />
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-fainter)', textTransform: 'uppercase', letterSpacing: '1px' }}>System</span>
+                <Zap size={12} color="var(--accent)" />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--text-faintest)', textTransform: 'uppercase', letterSpacing: '1px' }}>System</span>
               </div>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#00cc88', fontWeight: 700 }}>ONLINE</span>
             </div>
             <div style={{ height: 3, background: 'var(--border-default)', borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ width: '100%', height: '100%', background: 'linear-gradient(90deg, #a855f7, #7c3aed)', borderRadius: 3, boxShadow: '0 0 8px rgba(168,85,247,0.4)' }} />
+              <div style={{ width: '100%', height: '100%', background: 'linear-gradient(90deg, #00e5cc, #00b3a1)', borderRadius: 3, boxShadow: '0 0 8px rgba(0,229,204,0.4)' }} />
             </div>
           </div>
         </div>
 
         {/* User info + logout */}
-        <div style={{ padding: '8px 10px 12px', borderTop: '1px solid rgba(168,85,247,0.08)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, marginBottom: 4, background: 'rgba(168,85,247,0.05)' }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, rgba(168,85,247,0.25), rgba(168,85,247,0.08))', border: '1px solid rgba(168,85,247,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: '#a855f7', fontFamily: 'var(--font-display)' }}>
+        <div style={{ padding: '8px 10px 12px', borderTop: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, marginBottom: 4, background: 'var(--surface-1)' }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, rgba(0,229,204,0.2), rgba(0,229,204,0.06))', border: '1px solid rgba(0,229,204,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, color: 'var(--accent-text)', fontFamily: 'var(--font-display)' }}>
               {user.full_name?.[0]?.toUpperCase() ?? 'A'}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-soft)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {user.full_name || user.username}
               </div>
-              <div style={{ fontSize: 9, color: 'var(--text-fainter)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ color: '#a855f7', fontSize: 8 }}>●</span> Super Admin
+              <div style={{ fontSize: 9, color: 'var(--text-faintest)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ color: '#00cc88', fontSize: 8 }}>●</span> Super Admin
               </div>
             </div>
           </div>
+
+          {/* Theme toggle */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6,
+            padding: 3, borderRadius: 9, background: 'var(--surface-1)',
+            border: '1px solid rgba(255,255,255,0.05)',
+          }}>
+            {([
+              { id: 'light', label: 'Light', Icon: Sun },
+              { id: 'dark',  label: 'Dark',  Icon: Moon },
+            ] as const).map(({ id, label, Icon }) => {
+              const sel = theme === id
+              return (
+                <button
+                  key={id}
+                  onClick={() => { if (!sel) toggleTheme() }}
+                  title={`Switch to ${label} mode`}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '7px 0', borderRadius: 7, border: 'none',
+                    background: sel ? 'rgba(0,229,204,0.14)' : 'transparent',
+                    color: sel ? 'var(--accent-text)' : 'var(--text-fainter)',
+                    fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: sel ? 700 : 500,
+                    cursor: sel ? 'default' : 'pointer',
+                    transition: 'all .15s ease',
+                    boxShadow: sel ? '0 0 10px rgba(0,229,204,0.18) inset' : 'none',
+                  }}
+                  onMouseEnter={e => { if (!sel) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-soft)' }}
+                  onMouseLeave={e => { if (!sel) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-fainter)' }}
+                >
+                  <Icon size={12} />
+                  <span>{label}</span>
+                </button>
+              )
+            })}
+          </div>
+
           <button
             onClick={() => { logout(); router.push('/login') }}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 8, background: 'transparent', border: '1px solid transparent', color: 'var(--text-faintest)', fontSize: 12, fontFamily: 'var(--font-display)', cursor: 'pointer', transition: 'all .15s' }}
