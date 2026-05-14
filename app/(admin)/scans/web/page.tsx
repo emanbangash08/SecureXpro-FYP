@@ -1,22 +1,36 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Play, RotateCcw, Globe, FileText, ChevronRight, ChevronDown,
-  AlertTriangle, Lock, Shield, Download, Search,
+  Play, RotateCcw, Globe, FileText, ChevronDown,
+  AlertTriangle, Lock, Shield, Download, Search, Loader2, Check,
+  Cpu, Terminal as TerminalIcon, Radio, History, Gauge, Bug,
 } from 'lucide-react'
 import { useWebScanContext, WEB_PIPELINE } from '@/lib/web-scan-context'
 import type { WebPipelineStageId } from '@/lib/web-scan-context'
-import type { ScanLog } from '@/lib/types'
 
 // ── Severity helpers ──────────────────────────────────────────────────────────
 
 const SEV_COLOR: Record<string, string> = {
   critical: '#ff3355', high: '#ff6b35', medium: '#ffcc00', low: '#00cc88', info: '#4d9eff', none: '#2a3545',
 }
-const SEV_BG: Record<string, string> = {
-  critical: 'rgba(255,51,85,.08)', high: 'rgba(255,107,53,.08)',
-  medium: 'rgba(255,204,0,.08)', low: 'rgba(0,204,136,.08)', info: 'rgba(77,158,255,.08)', none: 'transparent',
+
+const PIPELINE_ICONS: Record<WebPipelineStageId, React.ElementType> = {
+  web_init:    Globe,
+  web_headers: Lock,
+  web_active:  Search,
+  web_zap:     Bug,
+  risk:        AlertTriangle,
+  report:      FileText,
+}
+
+const PIPELINE_DESC: Record<WebPipelineStageId, string> = {
+  web_init:    'Establish HTTPS connection to target',
+  web_headers: 'Audit security headers & SSL config',
+  web_active:  'Probe paths, methods, injection vectors',
+  web_zap:     'OWASP ZAP active scan (Docker)',
+  risk:        'CVSS composite risk scoring',
+  report:      'Findings & remediation report',
 }
 
 const OWASP_CATS = [
@@ -32,34 +46,23 @@ const OWASP_CATS = [
   { id: 'A10:2021', short: 'A10', name: 'SSRF' },
 ]
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Smooth count-up ──────────────────────────────────────────────────────────
 
-function SeverityBar({ label, count, max, color }: { label: string; count: number; max: number; color: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-      <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#8899aa', width: 58, textAlign: 'right', textTransform: 'uppercase', letterSpacing: '.5px' }}>{label}</span>
-      <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,.04)', borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${max > 0 ? (count / max) * 100 : 0}%`, background: color, borderRadius: 4, boxShadow: `0 0 8px ${color}80`, transition: 'width 1s ease' }} />
-      </div>
-      <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color, fontWeight: 700, width: 16, textAlign: 'center' }}>{count}</span>
-    </div>
-  )
-}
-
-function TerminalLine({ log }: { log: ScanLog }) {
-  const msg = log.message
-  const isCrit = log.level === 'error' && msg.includes('CRITICAL')
-  const col = log.level === 'cmd' ? '#00e5cc'
-    : log.level === 'success' ? '#00cc88'
-    : log.level === 'error' ? '#ff3355'
-    : log.level === 'warning' ? '#ffcc00'
-    : '#8899aa'
-  return (
-    <div style={{ color: col, animation: 'fade-in .2s ease' }}>
-      {isCrit && <span style={{ fontSize: 9, background: 'rgba(255,51,85,.15)', color: '#ff3355', padding: '1px 5px', borderRadius: 3, marginRight: 6, fontWeight: 700 }}>●</span>}
-      {msg}
-    </div>
-  )
+function AnimatedNumber({ value, decimals = 1, duration = 900 }: { value: number; decimals?: number; duration?: number }) {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    let raf = 0
+    const start = performance.now()
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setN(value * eased)
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value, duration])
+  return <>{n.toFixed(decimals)}</>
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -68,27 +71,31 @@ export default function WebScanPage() {
   const ctx = useWebScanContext()!
   const router = useRouter()
 
-  const { scan, logs, vulns, report, recentScans, activeStageId, completedStages, stageProgress, error, launching, isScanning, launchScan, loadScan, reset } = ctx
+  const {
+    scan, logs, vulns, report, recentScans,
+    activeStageId, completedStages, stageProgress,
+    error, launching, isScanning,
+    launchScan, loadScan, reset,
+  } = ctx
 
-  const [url,           setUrl]           = useState('')
-  const [checkPaths,    setCheckPaths]    = useState(true)
-  const [checkSsl,      setCheckSsl]      = useState(true)
-  const [activeTab,     setActiveTab]     = useState<'findings' | 'owasp' | 'report'>('findings')
-  const [expandedVuln,  setExpandedVuln]  = useState<string | null>(null)
+  const [url,          setUrl]          = useState('')
+  const [checkPaths,   setCheckPaths]   = useState(true)
+  const [checkSsl,     setCheckSsl]     = useState(true)
+  const [activeTab,    setActiveTab]    = useState<'findings' | 'owasp' | 'report'>('findings')
+  const [expandedVuln, setExpandedVuln] = useState<string | null>(null)
 
   const termRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight
   }, [logs])
 
-  // Deep-link: load scan from ?scanId= on mount
   useEffect(() => {
     if (typeof window === 'undefined') return
     const scanId = new URLSearchParams(window.location.search).get('scanId')
     if (scanId && !scan) loadScan(scanId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Pre-fill URL from active scan
   useEffect(() => {
     if (scan?.target && !url) setUrl(scan.target)
   }, [scan?.target])
@@ -105,10 +112,10 @@ export default function WebScanPage() {
 
   const handleReset = () => { reset(); setUrl(''); setExpandedVuln(null) }
 
-  const isDone = scan?.status === 'completed'
+  const isDone   = scan?.status === 'completed'
   const isFailed = scan?.status === 'failed'
 
-  // Severity counts from real vulns
+  // Severity counts
   const sevCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
   for (const v of vulns) {
     const s = (v.severity as string) || 'info'
@@ -117,7 +124,7 @@ export default function WebScanPage() {
   const totalFindings = vulns.length
   const maxSev = Math.max(sevCounts.critical, sevCounts.high, sevCounts.medium, sevCounts.low, sevCounts.info, 1)
 
-  // OWASP map from real vulns
+  // OWASP map
   const owaspData = OWASP_CATS.map(cat => {
     const catVulns = vulns.filter(v => (v.owasp as string | undefined)?.startsWith(cat.short))
     const sevOrder = ['critical', 'high', 'medium', 'low', 'info', 'none']
@@ -129,7 +136,7 @@ export default function WebScanPage() {
   })
   const owaspHits = owaspData.filter(o => o.count > 0).length
 
-  // Pipeline stage helper
+  // Pipeline helpers
   const getStageStatus = (id: WebPipelineStageId) => {
     if (isDone) return 'done'
     if (completedStages.has(id)) return 'done'
@@ -137,482 +144,1073 @@ export default function WebScanPage() {
     return 'pending'
   }
 
-  const connectorFill = (id: WebPipelineStageId) => {
-    const idx = WEB_PIPELINE.findIndex(s => s.id === id)
-    if (idx < 0 || idx >= WEB_PIPELINE.length - 1) return 0
-    const status = getStageStatus(id)
-    if (status === 'done') return 100
-    if (status === 'active') return stageProgress[id] || 0
-    return 0
-  }
+  const activeStageMeta = WEB_PIPELINE.find(s => s.id === activeStageId)
 
-  // Risk score from report
+  const overallPct = useMemo(() => {
+    const total = WEB_PIPELINE.length
+    const doneCount = WEB_PIPELINE.filter(s => completedStages.has(s.id) || isDone).length
+    if (isDone) return 100
+    const activeProg = activeStageMeta ? (stageProgress[activeStageMeta.id] ?? 0) / 100 : 0
+    return Math.round(((doneCount + (activeStageMeta ? activeProg : 0)) / total) * 100)
+  }, [completedStages, activeStageMeta, stageProgress, isDone])
+
+  // Risk
   const riskScore = report?.summary?.max_cvss_score ?? 0
-  const overallRisk = report?.summary?.overall_risk ?? scan?.risk_summary?.overall_risk ?? ''
+  const overallRisk = (report?.summary?.overall_risk ?? scan?.risk_summary?.overall_risk ?? 'info') as string
+  const riskCol = SEV_COLOR[overallRisk] || SEV_COLOR.info
+
+  // Option pill (toggle chip)
+  const OptionPill = ({ label, value, set, hint, color = '#00e5cc' }: { label: string; value: boolean; set: (v: boolean) => void; hint?: string; color?: string }) => (
+    <button onClick={() => { if (!isScanning) set(!value) }} disabled={isScanning}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 7,
+        padding: '8px 13px', borderRadius: 999,
+        background: value ? `${color}1c` : 'rgba(255,255,255,.025)',
+        border: `1px solid ${value ? `${color}65` : 'rgba(255,255,255,.07)'}`,
+        cursor: isScanning ? 'default' : 'pointer',
+        transition: 'all .18s ease', opacity: isScanning ? .45 : 1,
+        boxShadow: value ? `0 0 14px ${color}24 inset` : 'none',
+      }}>
+      <div style={{
+        width: 14, height: 14, borderRadius: 4, flexShrink: 0,
+        background: value ? `${color}35` : 'transparent',
+        border: `1px solid ${value ? `${color}aa` : 'rgba(255,255,255,.18)'}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {value && <Check size={9} color={color} strokeWidth={3.5} style={{ animation: 'check-pop .2s ease' }} />}
+      </div>
+      <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', color: value ? '#c8d3e0' : '#7a8a9a', fontWeight: 500, letterSpacing: '.2px' }}>
+        {label}
+      </span>
+      {hint && (
+        <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)', color: value ? `${color}bb` : '#4a5568', letterSpacing: '.5px' }}>
+          {hint}
+        </span>
+      )}
+    </button>
+  )
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1400, fontFamily: 'var(--font-ui)' }}>
+    <div style={{ padding: '32px 44px', maxWidth: 1680, margin: '0 auto', fontFamily: 'var(--font-ui)' }}>
 
-      {/* Header */}
-      <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#e8edf5', fontFamily: 'var(--font-display)', letterSpacing: '-.3px', margin: 0 }}>
-              Web Vulnerability Scan
+      {/* ─────────────────────  HERO HEADER  ───────────────────── */}
+      <div style={{
+        marginBottom: 20, padding: '24px 30px', borderRadius: 18,
+        border: '1px solid rgba(255,255,255,.06)',
+        background: 'linear-gradient(135deg, rgba(0,229,204,0.05) 0%, rgba(168,85,247,0.04) 50%, rgba(77,158,255,0.05) 100%)',
+        position: 'relative', overflow: 'hidden', animation: 'fade-in-up .5s ease',
+      }}>
+        <div style={{ position: 'absolute', inset: 0,
+          background: 'radial-gradient(circle at 0% 0%, rgba(0,229,204,0.09), transparent 50%), radial-gradient(circle at 100% 100%, rgba(77,158,255,0.07), transparent 50%)',
+          pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(0,229,204,.5), transparent)' }} />
+
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 380 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: 10,
+                background: 'linear-gradient(135deg, rgba(0,229,204,.2), rgba(0,229,204,.06))',
+                border: '1px solid rgba(0,229,204,.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 24px rgba(0,229,204,.18), 0 0 0 1px rgba(0,229,204,.1) inset',
+              }}>
+                <Globe size={18} color="#00e5cc" strokeWidth={2.2} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', borderRadius: 999,
+                background: isScanning ? 'rgba(0,229,204,.1)' : isDone ? 'rgba(0,204,136,.1)' : isFailed ? 'rgba(255,51,85,.1)' : 'rgba(255,255,255,.04)',
+                border: `1px solid ${isScanning ? 'rgba(0,229,204,.35)' : isDone ? 'rgba(0,204,136,.35)' : isFailed ? 'rgba(255,51,85,.35)' : 'rgba(255,255,255,.1)'}` }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%',
+                  background: isScanning ? '#00e5cc' : isDone ? '#00cc88' : isFailed ? '#ff3355' : '#6a7b8a',
+                  boxShadow: isScanning ? '0 0 10px #00e5cc' : isDone ? '0 0 8px #00cc88' : 'none',
+                  animation: isScanning ? 'pulse-dot 1s infinite' : 'none' }} />
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '1.6px', fontWeight: 600,
+                  color: isScanning ? '#00e5cc' : isDone ? '#00cc88' : isFailed ? '#ff3355' : '#8899aa' }}>
+                  {isScanning ? `Running · ${activeStageMeta?.label ?? 'init'}` : isDone ? 'Scan Complete' : isFailed ? 'Scan Failed' : 'Ready'}
+                </span>
+              </div>
+            </div>
+            <h1 style={{
+              fontSize: 28, fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-display)',
+              letterSpacing: '-.8px', marginBottom: 6, lineHeight: 1.15,
+              background: 'linear-gradient(135deg, #ffffff 0%, #b8c5d6 100%)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+            }}>
+              Web Application Security Scan
             </h1>
-            {isScanning && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontFamily: 'var(--font-mono)', color: '#ff6b35', background: 'rgba(255,107,53,.1)', border: '1px solid rgba(255,107,53,.3)', borderRadius: 12, padding: '3px 8px', letterSpacing: '.5px' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff6b35', display: 'inline-block', animation: 'pulse-dot 1s infinite' }} />
-                LIVE SCAN
-              </span>
-            )}
-            {isDone && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontFamily: 'var(--font-mono)', color: '#00cc88', background: 'rgba(0,204,136,.1)', border: '1px solid rgba(0,204,136,.3)', borderRadius: 12, padding: '3px 8px' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00cc88', display: 'inline-block' }} />
-                SCAN COMPLETE
-              </span>
-            )}
-            {isFailed && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontFamily: 'var(--font-mono)', color: '#ff3355', background: 'rgba(255,51,85,.1)', border: '1px solid rgba(255,51,85,.3)', borderRadius: 12, padding: '3px 8px' }}>
-                FAILED
-              </span>
-            )}
+            <p style={{ fontSize: 12, color: '#8899aa', fontFamily: 'var(--font-mono)', letterSpacing: '0.4px', lineHeight: 1.6 }}>
+              <span style={{ color: '#00e5cc' }}>Connect</span>
+              <span style={{ color: '#4a5568', margin: '0 7px' }}>→</span>
+              <span style={{ color: '#4d9eff' }}>Headers</span>
+              <span style={{ color: '#4a5568', margin: '0 7px' }}>→</span>
+              <span style={{ color: '#ff6b35' }}>Active Probe</span>
+              <span style={{ color: '#4a5568', margin: '0 7px' }}>→</span>
+              <span style={{ color: '#a855f7' }}>ZAP Scan</span>
+              <span style={{ color: '#4a5568', margin: '0 7px' }}>→</span>
+              <span style={{ color: '#ffcc00' }}>Risk</span>
+              <span style={{ color: '#4a5568', margin: '0 7px' }}>→</span>
+              <span style={{ color: '#00cc88' }}>Report</span>
+            </p>
           </div>
-          <p style={{ fontSize: 12, color: '#4a5568', fontFamily: 'var(--font-mono)', margin: 0 }}>
-            Connect → Header Audit → Path Probe → Risk Score → Report
-          </p>
+
+          {isScanning && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, animation: 'fade-in .3s ease' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a', textTransform: 'uppercase', letterSpacing: '1.4px', fontWeight: 600 }}>Progress</div>
+                <div style={{ fontSize: 28, fontFamily: 'var(--font-display)', fontWeight: 800, color: '#00e5cc', lineHeight: 1, textShadow: '0 0 22px rgba(0,229,204,.5)' }}>{overallPct}%</div>
+              </div>
+              <svg width="64" height="64" viewBox="0 0 64 64">
+                <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="4" />
+                <circle cx="32" cy="32" r="26" fill="none" stroke="#00e5cc" strokeWidth="4" strokeLinecap="round"
+                  strokeDasharray={`${(overallPct / 100) * 163.4} 163.4`}
+                  transform="rotate(-90 32 32)"
+                  style={{ filter: 'drop-shadow(0 0 8px rgba(0,229,204,.6))', transition: 'stroke-dasharray .4s ease' }} />
+              </svg>
+            </div>
+          )}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20 }}>
+      {/* ─────────────────────  HORIZONTAL CONFIG BAR  ───────────────────── */}
+      <div style={{
+        marginBottom: 18, padding: '20px 26px', borderRadius: 16,
+        background: 'linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))',
+        border: '1px solid rgba(255,255,255,.06)',
+        position: 'relative', overflow: 'hidden',
+        animation: 'fade-in-up .45s ease',
+      }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(0,229,204,.3), transparent)' }} />
 
-        {/* ── Left Panel ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Config card */}
-          <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, padding: 22 }}>
-            <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.5px', color: '#4a5568', marginBottom: 18 }}>Scan Configuration</p>
-
-            {/* Target URL */}
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#8899aa', display: 'block', marginBottom: 6, letterSpacing: '.5px' }}>TARGET URL</label>
-              <div style={{ position: 'relative' }}>
-                <Globe size={12} color="#4a5568" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  value={url}
-                  onChange={e => setUrl(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !isScanning && !isDone && handleLaunch()}
-                  placeholder="https://example.com"
-                  disabled={isScanning || launching}
-                  style={{ width: '100%', background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.09)', borderRadius: 8, padding: '9px 12px 9px 28px', color: '#e8edf5', fontFamily: 'var(--font-mono)', fontSize: 12, outline: 'none', boxSizing: 'border-box', opacity: (isScanning || launching) ? .5 : 1 }}
-                />
-              </div>
+        {/* ROW 1: target + launch */}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: '3 1 460px', minWidth: 320 }}>
+            <label style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a', display: 'block',
+              marginBottom: 7, textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: 600 }}>
+              Target URL
+            </label>
+            <div style={{ position: 'relative' }}>
+              <Globe size={14} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: '#6a7b8a' }} />
+              <input
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !isScanning && !isDone && handleLaunch()}
+                placeholder="https://example.com"
+                disabled={isScanning || launching}
+                style={{
+                  width: '100%', background: 'rgba(0,0,0,0.4)',
+                  border: '1px solid rgba(255,255,255,.08)', borderRadius: 10,
+                  padding: '13px 14px 13px 38px',
+                  color: '#e8edf5', fontFamily: 'var(--font-mono)', fontSize: 13, outline: 'none',
+                  boxSizing: 'border-box', opacity: (isScanning || launching) ? .45 : 1,
+                  transition: 'all .18s ease',
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = 'rgba(0,229,204,0.55)'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(0,229,204,0.1)' }}
+                onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,.08)'; e.currentTarget.style.boxShadow = 'none' }}
+              />
             </div>
-
-            {/* Modules */}
-            <div style={{ borderTop: '1px solid rgba(255,255,255,.05)', paddingTop: 14, marginBottom: 18 }}>
-              <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', letterSpacing: '.5px', marginBottom: 10 }}>MODULES</p>
-              {([
-                ['Sensitive Path Probe', checkPaths, setCheckPaths, '#ff6b35'],
-                ['SSL / HTTPS Audit',    checkSsl,   setCheckSsl,   '#ffcc00'],
-              ] as [string, boolean, (v: boolean) => void, string][]).map(([label, checked, setter, col]) => (
-                <label key={label} onClick={() => !isScanning && setter(!checked)} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: isScanning ? 'default' : 'pointer' }}>
-                  <div style={{ width: 15, height: 15, borderRadius: 4, background: checked ? `${col}18` : 'rgba(255,255,255,.04)', border: `1px solid ${checked ? `${col}60` : 'rgba(255,255,255,.08)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {checked && <div style={{ width: 7, height: 7, background: col, borderRadius: 2 }} />}
-                  </div>
-                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: checked ? '#c8d3e0' : '#4a5568' }}>{label}</span>
-                </label>
-              ))}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: .45 }}>
-                <div style={{ width: 15, height: 15, borderRadius: 4, background: 'rgba(0,229,204,.1)', border: '1px solid rgba(0,229,204,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <div style={{ width: 7, height: 7, background: '#00e5cc', borderRadius: 2 }} />
-                </div>
-                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>Security Headers (always)</span>
-              </div>
-            </div>
-
-            {/* Error */}
-            {error && (
-              <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 8, background: 'rgba(255,51,85,.08)', border: '1px solid rgba(255,51,85,.2)', fontSize: 11, fontFamily: 'var(--font-mono)', color: '#ff3355' }}>
-                {error}
-              </div>
-            )}
-
-            <button
-              onClick={isDone || isFailed ? handleReset : isScanning || launching ? undefined : handleLaunch}
-              disabled={!url.trim() && !isScanning && !isDone}
-              style={{
-                width: '100%', padding: '12px', borderRadius: 9, fontSize: 13, fontWeight: 700,
-                fontFamily: 'var(--font-display)', letterSpacing: '.04em',
-                cursor: (isScanning || launching) ? 'default' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: 'none',
-                background: (isDone || isFailed)
-                  ? 'rgba(255,255,255,.06)'
-                  : 'linear-gradient(135deg,#00e5cc,#00b3a1)',
-                color: (isDone || isFailed) ? '#8899aa' : '#07090f',
-                boxShadow: (isDone || isFailed) ? 'none' : '0 4px 24px rgba(0,229,204,.28)',
-                transition: 'all .2s',
-              }}
-            >
-              {launching
-                ? <><span style={{ width: 14, height: 14, border: '2px solid rgba(7,9,15,.4)', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin .7s linear infinite' }} /> Launching...</>
-                : isScanning
-                ? <><span style={{ width: 14, height: 14, border: '2px solid rgba(7,9,15,.4)', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin .7s linear infinite' }} /> Scanning...</>
-                : (isDone || isFailed)
-                ? <><RotateCcw size={14} /> New Scan</>
-                : <><Play size={14} /> Launch Scan</>}
-            </button>
           </div>
 
-          {/* Risk score card */}
-          {isDone && riskScore > 0 && (
-            <div style={{ background: `${SEV_BG[overallRisk] || SEV_BG.critical}`, border: `1px solid ${SEV_COLOR[overallRisk] || SEV_COLOR.critical}30`, borderRadius: 14, padding: 20 }}>
-              <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', color: SEV_COLOR[overallRisk] || SEV_COLOR.critical, marginBottom: 12, textAlign: 'center' }}>Max CVSS Score</p>
-              <div style={{ textAlign: 'center', marginBottom: 14 }}>
-                <div style={{ fontSize: 54, fontWeight: 800, color: SEV_COLOR[overallRisk] || SEV_COLOR.critical, fontFamily: 'var(--font-display)', lineHeight: 1, textShadow: `0 0 40px ${SEV_COLOR[overallRisk] || SEV_COLOR.critical}50` }}>
-                  {riskScore.toFixed(1)}
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: SEV_COLOR[overallRisk] || SEV_COLOR.critical, fontFamily: 'var(--font-mono)', marginTop: 4, letterSpacing: '2px' }}>
-                  {overallRisk.toUpperCase()}
-                </div>
+          <div style={{ flex: '0 0 auto' }}>
+            <button
+              onClick={isDone || isFailed ? handleReset : isScanning || launching ? undefined : handleLaunch}
+              disabled={!url.trim() && !isScanning && !isDone && !isFailed}
+              onMouseEnter={e => { if (!isScanning && !isDone && !isFailed) e.currentTarget.style.transform = 'translateY(-1px)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)' }}
+              style={{
+                padding: '14px 28px', borderRadius: 11,
+                fontSize: 13.5, fontWeight: 700, fontFamily: 'var(--font-display)',
+                cursor: (isScanning || launching) ? 'default' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                border: 'none',
+                background: (isDone || isFailed) ? 'rgba(255,255,255,.06)' : 'linear-gradient(135deg,#00e5cc,#00b3a1)',
+                color: (isDone || isFailed) ? '#c8d3e0' : '#04110e',
+                boxShadow: (isDone || isFailed) ? 'none' : '0 6px 28px rgba(0,229,204,.42), 0 0 0 1px rgba(0,229,204,.55) inset',
+                transition: 'all .2s ease', position: 'relative', overflow: 'hidden',
+                minWidth: 180, letterSpacing: '.2px',
+              }}>
+              {!isDone && !isFailed && !isScanning && !launching && (
+                <div style={{ position: 'absolute', inset: 0,
+                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent)',
+                  backgroundSize: '200% 100%', animation: 'shimmer 2.5s linear infinite', pointerEvents: 'none' }} />
+              )}
+              <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 9 }}>
+                {launching
+                  ? <><Loader2 size={15} style={{ animation: 'spin .7s linear infinite' }} /> Queuing...</>
+                  : isScanning
+                    ? <><span style={{ width: 14, height: 14, border: '2px solid #04110e', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin .7s linear infinite' }} /> Scanning...</>
+                    : (isDone || isFailed)
+                      ? <><RotateCcw size={15} /> New Scan</>
+                      : <><Play size={15} fill="#04110e" /> Launch Scan</>}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* ROW 2: option pills */}
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,.05)',
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#6a7b8a',
+            textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: 600 }}>
+            Modules
+          </span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <OptionPill label="Sensitive Path Probe" value={checkPaths} set={setCheckPaths} />
+            <OptionPill label="SSL / HTTPS Audit"    value={checkSsl}   set={setCheckSsl} />
+            {/* Always-on indicator */}
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 7,
+              padding: '8px 13px', borderRadius: 999,
+              background: 'rgba(0,229,204,.08)',
+              border: '1px dashed rgba(0,229,204,.35)',
+              opacity: 0.85,
+            }}>
+              <div style={{ width: 14, height: 14, borderRadius: 4, flexShrink: 0,
+                background: 'rgba(0,229,204,.25)',
+                border: '1px solid rgba(0,229,204,.7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Check size={9} color="#00e5cc" strokeWidth={3.5} />
               </div>
-              <div style={{ paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.05)' }}>
-                <SeverityBar label="Critical" count={sevCounts.critical} max={maxSev} color="#ff3355" />
-                <SeverityBar label="High"     count={sevCounts.high}     max={maxSev} color="#ff6b35" />
-                <SeverityBar label="Medium"   count={sevCounts.medium}   max={maxSev} color="#ffcc00" />
-                <SeverityBar label="Low"      count={sevCounts.low}      max={maxSev} color="#00cc88" />
+              <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', color: '#8899aa', fontWeight: 500 }}>
+                Security Headers
+              </span>
+              <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#00e5cc', letterSpacing: '.7px', fontWeight: 600 }}>
+                ALWAYS
+              </span>
+            </span>
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ marginTop: 14,
+            padding: '10px 14px', borderRadius: 9,
+            background: 'rgba(255,51,85,.08)', border: '1px solid rgba(255,51,85,.25)',
+            color: '#ff3355', fontSize: 11.5, fontFamily: 'var(--font-mono)',
+            display: 'flex', alignItems: 'center', gap: 9, animation: 'shake .3s ease',
+          }}>
+            <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ─────────────────────  ENGINE: PIPELINE + TERMINAL  ───────────────────── */}
+      <div style={{
+        marginBottom: 18, borderRadius: 16,
+        background: 'linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))',
+        border: '1px solid rgba(255,255,255,.06)',
+        position: 'relative', overflow: 'hidden',
+        animation: 'fade-in-up .5s ease',
+      }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(0,229,204,.3), transparent)' }} />
+
+        {/* Split header */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '1fr 1px 1fr',
+          padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,.05)',
+          background: 'rgba(255,255,255,.015)', alignItems: 'center',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingRight: 24 }}>
+            <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(0,229,204,.1)',
+              border: '1px solid rgba(0,229,204,.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Cpu size={13} color="#00e5cc" />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontFamily: 'var(--font-display)', color: '#e8edf5', fontWeight: 700, letterSpacing: '-.2px' }}>
+                Scan Pipeline
+              </div>
+              <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#6a7b8a', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 2 }}>
+                {WEB_PIPELINE.length}-stage web assessment
               </div>
             </div>
-          )}
-
-          {/* Recent Scans */}
-          <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, padding: 18 }}>
-            <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.5px', color: '#4a5568', marginBottom: 14 }}>Recent Web Scans</p>
-            {recentScans.length === 0 && (
-              <p style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#2a3545', textAlign: 'center', padding: '12px 0' }}>No web scans yet</p>
+          </div>
+          <div style={{ height: 36, width: 1, background: 'rgba(255,255,255,.06)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingLeft: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 26, height: 26, borderRadius: 7, background: 'rgba(167,139,250,.1)',
+                border: '1px solid rgba(167,139,250,.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <TerminalIcon size={13} color="#a78bfa" />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontFamily: 'var(--font-display)', color: '#e8edf5', fontWeight: 700, letterSpacing: '-.2px' }}>
+                  Engine Log
+                </div>
+                <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#6a7b8a', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 2 }}>
+                  Real-time command output
+                </div>
+              </div>
+            </div>
+            {isScanning && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 10, fontFamily: 'var(--font-mono)',
+                color: '#00e5cc', padding: '5px 11px', borderRadius: 999,
+                background: 'rgba(0,229,204,.08)', border: '1px solid rgba(0,229,204,.25)' }}>
+                <Radio size={11} style={{ animation: 'pulse-dot 1s infinite' }} />
+                <span style={{ letterSpacing: '1.2px', fontWeight: 600 }}>LIVE</span>
+              </div>
             )}
-            {recentScans.map(s => {
-              const isActive = scan?.id === s.id
+          </div>
+        </div>
+
+        {/* Body: 2-column split */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr', minHeight: 540 }}>
+
+          {/* ── LEFT: Vertical pipeline timeline ── */}
+          <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {WEB_PIPELINE.map((s, i) => {
+              const status = getStageStatus(s.id)
+              const Icon = PIPELINE_ICONS[s.id]
+              const prog = stageProgress[s.id] ?? 0
+              const isLast = i === WEB_PIPELINE.length - 1
+              const nextStatus = !isLast ? getStageStatus(WEB_PIPELINE[i + 1].id) : null
+              const connectorActive = status === 'done' || (status === 'active' && nextStatus !== 'pending')
               return (
-                <div
-                  key={s.id}
+                <div key={s.id} style={{ position: 'relative', display: 'flex', gap: 14, alignItems: 'stretch' }}>
+                  {/* Left rail */}
+                  <div style={{ position: 'relative', width: 40, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+                      background: status === 'done'
+                        ? `linear-gradient(135deg, ${s.color}30, ${s.color}10)`
+                        : status === 'active'
+                          ? `linear-gradient(135deg, ${s.color}28, ${s.color}08)`
+                          : 'rgba(255,255,255,.03)',
+                      border: `2px solid ${status === 'done' ? s.color : status === 'active' ? s.color : 'rgba(255,255,255,.08)'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: status === 'active' ? `0 0 22px ${s.color}66, 0 0 0 5px ${s.color}10` : status === 'done' ? `0 0 12px ${s.color}45` : 'none',
+                      transition: 'all .4s ease', zIndex: 2, position: 'relative',
+                    }}>
+                      {status === 'done'
+                        ? <Check size={17} color={s.color} strokeWidth={3} style={{ animation: 'check-pop .35s ease' }} />
+                        : <Icon size={16} color={status !== 'pending' ? s.color : '#5a6a7a'}
+                            style={{ animation: status === 'active' ? 'icon-bob 1.4s ease-in-out infinite' : 'none' }} />}
+                      {status === 'active' && (
+                        <span style={{ position: 'absolute', inset: -4, borderRadius: '50%',
+                          border: `2px solid ${s.color}`, opacity: 0.4,
+                          animation: 'pulse-ring 1.8s ease-out infinite' }} />
+                      )}
+                    </div>
+                    {!isLast && (
+                      <div style={{ flex: 1, width: 2, marginTop: 5, position: 'relative',
+                        background: 'rgba(255,255,255,.05)', borderRadius: 2, minHeight: 14, overflow: 'hidden' }}>
+                        <div style={{
+                          position: 'absolute', top: 0, left: 0, right: 0,
+                          height: connectorActive ? '100%' : '0%',
+                          background: status === 'done'
+                            ? `linear-gradient(180deg, ${s.color}, ${WEB_PIPELINE[i + 1].color})`
+                            : s.color,
+                          transition: 'height .5s ease',
+                          boxShadow: connectorActive ? `0 0 8px ${s.color}90` : 'none',
+                        }} />
+                        {status === 'active' && (
+                          <div style={{ position: 'absolute', left: 0, right: 0, height: '40%',
+                            background: 'linear-gradient(180deg, transparent, rgba(255,255,255,.5), transparent)',
+                            animation: 'rail-beam 1.5s linear infinite' }} />
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Stage row */}
+                  <div style={{
+                    flex: 1, padding: '12px 16px', borderRadius: 11,
+                    background: status === 'done'
+                      ? `linear-gradient(135deg, ${s.color}10, ${s.color}02)`
+                      : status === 'active'
+                        ? `linear-gradient(135deg, ${s.color}18, ${s.color}04)`
+                        : 'rgba(255,255,255,.02)',
+                    border: `1px solid ${status === 'done' ? `${s.color}38` : status === 'active' ? `${s.color}58` : 'rgba(255,255,255,.06)'}`,
+                    boxShadow: status === 'active' ? `0 4px 22px ${s.color}22` : 'none',
+                    transition: 'all .3s ease', position: 'relative', overflow: 'hidden',
+                  }}>
+                    {status === 'active' && (
+                      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+                        background: `linear-gradient(90deg, transparent, ${s.color}, transparent)`,
+                        animation: 'edge-shimmer 2s linear infinite' }} />
+                    )}
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                          <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)',
+                            color: status === 'pending' ? '#3a4a5a' : `${s.color}cc`,
+                            letterSpacing: '1.3px', fontWeight: 700, textTransform: 'uppercase' }}>
+                            Stage {String(i + 1).padStart(2, '0')}
+                          </span>
+                          {status === 'done' && (
+                            <span style={{ fontSize: 8.5, padding: '2px 7px', borderRadius: 999,
+                              background: `${s.color}1c`, color: s.color, border: `1px solid ${s.color}40`,
+                              fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '.7px' }}>
+                              ✓ DONE
+                            </span>
+                          )}
+                          {status === 'active' && (
+                            <span style={{ fontSize: 8.5, padding: '2px 7px', borderRadius: 999,
+                              background: `${s.color}1c`, color: s.color, border: `1px solid ${s.color}40`,
+                              fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '.7px',
+                              display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span style={{ width: 4, height: 4, borderRadius: '50%', background: s.color, animation: 'pulse-dot 1s infinite' }} />
+                              RUNNING
+                            </span>
+                          )}
+                        </div>
+                        <div style={{
+                          fontSize: 15, fontFamily: 'var(--font-display)', fontWeight: 700,
+                          color: status === 'done' ? s.color : status === 'active' ? '#ffffff' : '#8899aa',
+                          letterSpacing: '-.3px', marginBottom: 3,
+                        }}>{s.label}</div>
+                        <div style={{
+                          fontSize: 11, fontFamily: 'var(--font-mono)',
+                          color: status === 'pending' ? '#5a6a7a' : '#8899aa', lineHeight: 1.5,
+                        }}>{PIPELINE_DESC[s.id]}</div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        {(status === 'active' || status === 'done') && (
+                          <div style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 800,
+                            color: s.color, lineHeight: 1, letterSpacing: '-.6px',
+                            textShadow: status === 'active' ? `0 0 12px ${s.color}66` : 'none' }}>
+                            {status === 'done' ? '100' : prog}<span style={{ fontSize: 12, opacity: 0.65 }}>%</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ height: 3, background: 'rgba(255,255,255,.05)', borderRadius: 3, overflow: 'hidden', position: 'relative' }}>
+                      <div style={{
+                        height: '100%',
+                        width: status === 'done' ? '100%' : status === 'active' ? `${prog}%` : '0%',
+                        background: status !== 'pending' ? `linear-gradient(90deg, ${s.color}, ${s.color}cc)` : 'transparent',
+                        borderRadius: 3,
+                        boxShadow: status !== 'pending' ? `0 0 8px ${s.color}90` : 'none',
+                        transition: 'width .5s ease',
+                      }} />
+                      {status === 'active' && (
+                        <div style={{ position: 'absolute', top: 0, bottom: 0, width: '40%',
+                          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent)',
+                          animation: 'pipe-beam 1.5s linear infinite' }} />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* divider */}
+          <div style={{ background: 'rgba(255,255,255,.05)' }} />
+
+          {/* ── RIGHT: Terminal ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', background: '#020408', position: 'relative' }}>
+            <div style={{ padding: '12px 20px', background: 'rgba(255,255,255,.025)',
+              borderBottom: '1px solid rgba(255,255,255,.05)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {['#ff5f57', '#febc2e', '#28c840'].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: '50%', background: c, boxShadow: `0 0 6px ${c}55` }} />)}
+              </div>
+              <span style={{ marginLeft: 10, fontSize: 10.5, fontFamily: 'var(--font-mono)', color: '#7a8a9a' }}>
+                securex-engine — web-scan{scan ? ` — ${scan.id.slice(-8)}` : ''}
+              </span>
+            </div>
+            <div ref={termRef} style={{
+              flex: 1, padding: '16px 22px', overflowY: 'auto', minHeight: 440, maxHeight: 540,
+              fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.85, position: 'relative',
+            }}>
+              {isScanning && (
+                <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
+                  background: 'linear-gradient(180deg, transparent 0%, rgba(0,229,204,0.04) 50%, transparent 100%)',
+                  height: 80, animation: 'term-scan 4s linear infinite' }} />
+              )}
+              {logs.length === 0 && !isScanning && (
+                <span style={{ color: '#3a4a5a' }}>securex@engine:~$ <span style={{ color: '#5a6a7a' }}>Configure target URL and press Launch Scan to begin...</span></span>
+              )}
+              {logs.map((l, i) => {
+                const col = l.level === 'cmd' ? '#00e5cc' : l.level === 'success' ? '#00cc88' : l.level === 'error' ? '#ff3355' : l.level === 'warning' ? '#ff6b35' : '#8899aa'
+                const prefix = l.level === 'cmd' ? '$' : l.level === 'success' ? '✓' : l.level === 'error' ? '✗' : l.level === 'warning' ? '!' : '·'
+                return (
+                  <div key={l.id ?? i} style={{ color: col, display: 'flex', gap: 10, animation: 'slide-in-up .2s ease both' }}>
+                    <span style={{ color: `${col}a0`, flexShrink: 0, width: 12 }}>{prefix}</span>
+                    <span style={{ flex: 1, wordBreak: 'break-word' }}>{l.message}</span>
+                  </div>
+                )
+              })}
+              {isScanning && <span style={{ color: '#00e5cc', animation: 'blink 1s step-end infinite' }}>█</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* Active stage strip */}
+        {isScanning && activeStageMeta && (
+          <div style={{
+            padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,.05)',
+            background: `linear-gradient(90deg, ${activeStageMeta.color}10, transparent 60%)`,
+            display: 'flex', alignItems: 'center', gap: 14,
+            animation: 'fade-in .3s ease',
+          }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: 8,
+              background: `${activeStageMeta.color}26`,
+              border: `1px solid ${activeStageMeta.color}60`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, animation: 'pulse-soft 1.5s ease-in-out infinite',
+            }}>
+              <Loader2 size={14} color={activeStageMeta.color} style={{ animation: 'spin 1.2s linear infinite' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 700, color: activeStageMeta.color, marginBottom: 2 }}>
+                Currently running · {activeStageMeta.label}
+              </div>
+              <div style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: '#8899aa' }}>
+                {PIPELINE_DESC[activeStageMeta.id]}
+              </div>
+            </div>
+            <div style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 800, color: activeStageMeta.color, letterSpacing: '-.6px' }}>
+              {stageProgress[activeStageMeta.id] ?? 0}<span style={{ fontSize: 13, opacity: 0.65 }}>%</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─────────────────────  RISK SCORE STRIP  ───────────────────── */}
+      {isDone && riskScore > 0 && (
+        <div style={{
+          marginBottom: 18, padding: '26px 32px', borderRadius: 16,
+          background: 'linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.01))',
+          border: '1px solid rgba(255,255,255,.07)',
+          position: 'relative', overflow: 'hidden',
+          animation: 'fade-in-up .5s ease',
+        }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 3, background: riskCol }} />
+
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 40, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 22, minWidth: 280 }}>
+              <div style={{ width: 52, height: 52, borderRadius: 12,
+                background: `${riskCol}14`,
+                border: `1px solid ${riskCol}38`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Gauge size={24} color={riskCol} strokeWidth={2} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase',
+                  letterSpacing: '1.8px', color: '#7a8a9a', marginBottom: 6, fontWeight: 600 }}>
+                  Max CVSS Score
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
+                  <div style={{
+                    fontSize: 52, fontWeight: 700, color: '#ffffff',
+                    fontFamily: 'var(--font-display)', lineHeight: 1, letterSpacing: '-2.5px',
+                  }}>
+                    <AnimatedNumber value={riskScore} decimals={1} />
+                    <span style={{ fontSize: 18, color: '#5a6a7a', fontWeight: 500, marginLeft: 4, letterSpacing: '-.5px' }}>/10</span>
+                  </div>
+                  <div style={{
+                    fontSize: 10, fontWeight: 700, color: riskCol,
+                    fontFamily: 'var(--font-mono)', letterSpacing: '1.8px', textTransform: 'uppercase',
+                    padding: '4px 10px', borderRadius: 999,
+                    background: `${riskCol}14`,
+                    border: `1px solid ${riskCol}40`,
+                  }}>
+                    {overallRisk}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ flex: 1, minWidth: 360, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+              {[['Critical', sevCounts.critical, '#ff3355'], ['High', sevCounts.high, '#ff6b35'], ['Medium', sevCounts.medium, '#ffcc00'], ['Low', sevCounts.low, '#00cc88']].map(([l, n, c], i) => (
+                <div key={l as string} style={{
+                  padding: '14px 16px', borderRadius: 11,
+                  background: 'rgba(255,255,255,.025)',
+                  border: '1px solid rgba(255,255,255,.06)',
+                  position: 'relative', overflow: 'hidden',
+                  animation: `fade-in-up .4s ease both`, animationDelay: `${i * 60}ms`,
+                }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 2, background: c as string, opacity: 0.7 }} />
+                  <div style={{ fontSize: 28, fontFamily: 'var(--font-display)', fontWeight: 700,
+                    color: '#ffffff', lineHeight: 1, letterSpacing: '-.8px' }}>
+                    {n as number}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: c as string }} />
+                    <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#7a8a9a',
+                      textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>{l as string}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────  RESULTS PANEL  ───────────────────── */}
+      {(isDone || (isFailed && vulns.length > 0)) && (
+        <div style={{
+          marginBottom: 18,
+          background: 'linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015))',
+          border: '1px solid rgba(255,255,255,.06)', borderRadius: 16, overflow: 'hidden',
+          animation: 'fade-in-up .5s ease',
+        }}>
+          {/* Summary tiles */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', borderBottom: '1px solid rgba(255,255,255,.05)' }}>
+            {[
+              [String(totalFindings),        'Findings',  '#ff6b35', Bug],
+              [String(owaspHits),            'OWASP Hits','#ffcc00', Shield],
+              [String(sevCounts.critical),   'Critical',  '#ff3355', AlertTriangle],
+              [String(sevCounts.high),       'High',      '#ff6b35', AlertTriangle],
+            ].map(([val, label, col, Ic], i) => {
+              const IcComp = Ic as React.ElementType
+              return (
+                <div key={label as string} style={{
+                  padding: '22px 26px', borderRight: '1px solid rgba(255,255,255,.04)',
+                  position: 'relative', overflow: 'hidden',
+                  animation: 'fade-in-up .4s ease both', animationDelay: `${i * 70}ms`,
+                }}>
+                  <div style={{ position: 'absolute', top: 10, right: 12, opacity: 0.07 }}>
+                    <IcComp size={62} color={col as string} />
+                  </div>
+                  <div style={{ fontSize: 30, fontWeight: 700, color: '#ffffff', fontFamily: 'var(--font-display)', lineHeight: 1,
+                    position: 'relative', letterSpacing: '-1.2px' }}>
+                    {val as string}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 9, position: 'relative' }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: col as string }} />
+                    <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#7a8a9a',
+                      textTransform: 'uppercase', letterSpacing: '1.1px', fontWeight: 600 }}>
+                      {label as string}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,.05)', padding: '0 24px', gap: 6 }}>
+            {(['findings', 'owasp', 'report'] as const).map(t => (
+              <button key={t} onClick={() => setActiveTab(t)} style={{
+                padding: '14px 18px', background: 'none', border: 'none',
+                borderBottom: `2px solid ${activeTab === t ? '#00e5cc' : 'transparent'}`,
+                color: activeTab === t ? '#00e5cc' : '#7a8a9a',
+                fontSize: 11, fontFamily: 'var(--font-mono)', cursor: 'pointer',
+                textTransform: 'uppercase', letterSpacing: '1.3px',
+                transition: 'all .2s', fontWeight: activeTab === t ? 700 : 500, position: 'relative',
+              }}>
+                {t === 'findings' ? `Findings (${totalFindings})` : t === 'owasp' ? 'OWASP Map' : 'Report'}
+                {activeTab === t && (
+                  <div style={{ position: 'absolute', bottom: -2, left: 0, right: 0, height: 2,
+                    background: '#00e5cc', boxShadow: '0 0 10px #00e5cc', borderRadius: 2 }} />
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ padding: '24px 28px' }} key={activeTab}>
+
+            {/* FINDINGS */}
+            {activeTab === 'findings' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'fade-in .25s ease' }}>
+                {vulns.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '40px 0', color: '#7a8a9a', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                    <Shield size={32} color="#2a3545" style={{ margin: '0 auto 12px', display: 'block' }} />
+                    No findings detected
+                  </div>
+                )}
+                {vulns.map((v: any, idx: number) => {
+                  const sev = v.severity as string
+                  const isOpen = expandedVuln === v.id
+                  return (
+                    <div key={v.id} style={{
+                      borderRadius: 12, border: `1px solid ${SEV_COLOR[sev]}28`,
+                      overflow: 'hidden', transition: 'all .2s ease',
+                      animation: 'slide-in-up .3s ease both', animationDelay: `${Math.min(idx, 10) * 40}ms`,
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = `${SEV_COLOR[sev]}55` }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = `${SEV_COLOR[sev]}28` }}>
+                      <div onClick={() => setExpandedVuln(isOpen ? null : v.id)} style={{
+                        padding: '14px 18px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 14,
+                        background: isOpen ? `${SEV_COLOR[sev]}10` : 'rgba(255,255,255,.025)',
+                        transition: 'background .18s ease',
+                      }}>
+                        <span style={{
+                          fontSize: 10, padding: '4px 10px', borderRadius: 6,
+                          fontFamily: 'var(--font-mono)', fontWeight: 700,
+                          background: `${SEV_COLOR[sev]}18`, color: SEV_COLOR[sev],
+                          border: `1px solid ${SEV_COLOR[sev]}38`, flexShrink: 0,
+                          letterSpacing: '0.5px', textTransform: 'uppercase',
+                        }}>
+                          {sev}
+                        </span>
+                        {v.owasp && (
+                          <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4d9eff',
+                            background: 'rgba(77,158,255,.1)', padding: '4px 9px', borderRadius: 6,
+                            border: '1px solid rgba(77,158,255,.3)', flexShrink: 0, fontWeight: 600, letterSpacing: '.3px' }}>
+                            {v.owasp}
+                          </span>
+                        )}
+                        <span style={{ fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 600, color: '#e8edf5', flex: 1 }}>{v.title}</span>
+                        <span style={{ fontSize: 16, fontFamily: 'var(--font-display)', fontWeight: 800, color: SEV_COLOR[sev],
+                          textShadow: `0 0 10px ${SEV_COLOR[sev]}50` }}>
+                          {v.cvss_score?.toFixed?.(1) ?? v.cvss_score}
+                        </span>
+                        <div style={{ transition: 'transform .25s ease',
+                          transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                          <ChevronDown size={15} color="#7a8a9a" />
+                        </div>
+                      </div>
+                      {isOpen && (
+                        <div style={{
+                          padding: '16px 18px', borderTop: `1px solid ${SEV_COLOR[sev]}25`,
+                          background: 'rgba(0,0,0,0.3)', animation: 'slide-in-up .25s ease',
+                        }}>
+                          <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#8899aa', lineHeight: 1.75, marginBottom: 12 }}>
+                            {v.description}
+                          </p>
+                          {v.affected_url && (
+                            <div style={{ marginBottom: 12 }}>
+                              <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4d9eff',
+                                background: 'rgba(77,158,255,.08)', padding: '5px 10px', borderRadius: 6,
+                                border: '1px solid rgba(77,158,255,.22)' }}>
+                                URL · {v.affected_url}
+                              </span>
+                            </div>
+                          )}
+                          {v.evidence && (
+                            <pre style={{
+                              margin: '0 0 12px', padding: '12px 14px',
+                              background: '#03040a', borderRadius: 9,
+                              fontFamily: 'var(--font-mono)', fontSize: 11.5, color: '#4d9eff',
+                              lineHeight: 1.65, overflowX: 'auto',
+                              whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                              border: '1px solid rgba(77,158,255,.15)',
+                            }}>
+                              {v.evidence}
+                            </pre>
+                          )}
+                          <div style={{
+                            padding: '12px 14px', background: 'rgba(0,204,136,.06)',
+                            borderRadius: 9, border: '1px solid rgba(0,204,136,.18)',
+                            fontSize: 12, fontFamily: 'var(--font-mono)',
+                            color: '#8899aa', lineHeight: 1.7,
+                            display: 'flex', gap: 10, alignItems: 'flex-start',
+                          }}>
+                            <Shield size={13} color="#00cc88" style={{ flexShrink: 0, marginTop: 2 }} />
+                            <span><strong style={{ color: '#00cc88' }}>Remediation:</strong> {v.remediation}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* OWASP */}
+            {activeTab === 'owasp' && (
+              <div style={{ animation: 'fade-in .25s ease' }}>
+                <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#7a8a9a', marginBottom: 18, lineHeight: 1.7 }}>
+                  OWASP Top 10 (2021) coverage —{' '}
+                  <span style={{ color: '#ff3355', fontWeight: 600 }}>{owaspHits} {owaspHits === 1 ? 'category' : 'categories'} affected</span>
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 22 }}>
+                  {owaspData.map((o, idx) => {
+                    const hit = o.count > 0
+                    const col = hit ? (SEV_COLOR[o.sev] || '#4a5568') : '#2a3545'
+                    return (
+                      <div key={o.id} style={{
+                        borderRadius: 12,
+                        background: hit ? 'rgba(255,255,255,.025)' : 'rgba(255,255,255,.012)',
+                        border: `1px solid ${hit ? `${col}35` : 'rgba(255,255,255,.05)'}`,
+                        overflow: 'hidden', position: 'relative',
+                        transition: 'all .2s ease',
+                        animation: 'fade-in-up .35s ease both', animationDelay: `${idx * 35}ms`,
+                      }}>
+                        {hit && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+                          background: `linear-gradient(90deg, ${col}, ${col}60)` }} />}
+                        <div style={{ padding: '14px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                            color: hit ? col : '#3a4a5a', marginBottom: 6, letterSpacing: '.5px' }}>{o.short}</div>
+                          <div style={{ fontSize: 9.5, fontFamily: 'var(--font-display)',
+                            color: hit ? '#8899aa' : '#3a4a5a', minHeight: 28, lineHeight: 1.45, marginBottom: 10 }}>{o.name}</div>
+                          <div style={{ fontSize: 26, fontFamily: 'var(--font-display)', fontWeight: 700,
+                            color: hit ? '#ffffff' : '#2a3545', letterSpacing: '-.8px', lineHeight: 1 }}>
+                            {o.count}
+                          </div>
+                          {hit && (
+                            <div style={{ marginTop: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                              <span style={{ width: 5, height: 5, borderRadius: '50%', background: col }} />
+                              <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: col,
+                                letterSpacing: '.7px', textTransform: 'uppercase', fontWeight: 600 }}>{o.sev}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Severity distribution */}
+                <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)',
+                  borderRadius: 12, padding: 18 }}>
+                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#8899aa',
+                    letterSpacing: '1.3px', textTransform: 'uppercase', marginBottom: 14, fontWeight: 600 }}>
+                    Severity Distribution
+                  </div>
+                  {[['Critical', sevCounts.critical, '#ff3355'], ['High', sevCounts.high, '#ff6b35'], ['Medium', sevCounts.medium, '#ffcc00'], ['Low', sevCounts.low, '#00cc88']].map(([label, count, color], i) => {
+                    const pct = totalFindings > 0 ? ((count as number) / totalFindings) * 100 : 0
+                    return (
+                      <div key={label as string} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 11,
+                        animation: 'slide-in-left .4s ease both', animationDelay: `${i * 80}ms` }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color as string, flexShrink: 0, boxShadow: `0 0 6px ${color}90` }} />
+                        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#8899aa', width: 60, fontWeight: 500 }}>{label as string}</span>
+                        <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,.05)', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${pct}%`, height: '100%',
+                            background: `linear-gradient(90deg, ${color}, ${color}cc)`,
+                            borderRadius: 3, transition: 'width .7s ease',
+                          }} />
+                        </div>
+                        <span style={{ fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 700, color: '#ffffff', width: 24, textAlign: 'right' }}>{count as number}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* REPORT */}
+            {activeTab === 'report' && (
+              <div style={{ animation: 'fade-in .25s ease' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 }}>
+                  <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)',
+                    borderRadius: 12, padding: 18 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}>
+                      <FileText size={14} color="#00e5cc" />
+                      <span style={{ fontSize: 11, fontFamily: 'var(--font-display)', color: '#e8edf5',
+                        fontWeight: 700, letterSpacing: '-.1px' }}>Executive Summary</span>
+                    </div>
+                    <p style={{ fontSize: 12.5, fontFamily: 'var(--font-mono)', color: '#8899aa', lineHeight: 1.8, margin: 0 }}>
+                      Web assessment of <span style={{ color: '#00e5cc', fontWeight: 600 }}>{scan?.target}</span> found{' '}
+                      <strong style={{ color: '#ff3355' }}>{sevCounts.critical} critical</strong>,{' '}
+                      <strong style={{ color: '#ff6b35' }}>{sevCounts.high} high</strong>,{' '}
+                      <strong style={{ color: '#ffcc00' }}>{sevCounts.medium} medium</strong>, and{' '}
+                      <strong style={{ color: '#00cc88' }}>{sevCounts.low} low</strong> severity findings across{' '}
+                      <strong style={{ color: '#a78bfa' }}>{owaspHits} OWASP categor{owaspHits === 1 ? 'y' : 'ies'}</strong>.
+                      {sevCounts.critical > 0 && ' Immediate remediation required.'}
+                    </p>
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)',
+                    borderRadius: 12, padding: 18 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}>
+                      <Cpu size={14} color="#a78bfa" />
+                      <span style={{ fontSize: 11, fontFamily: 'var(--font-display)', color: '#e8edf5',
+                        fontWeight: 700, letterSpacing: '-.1px' }}>Scan Metadata</span>
+                    </div>
+                    {[
+                      ['Target',    scan?.target ?? '—'],
+                      ['Scan ID',   scan?.id?.slice(-8).toUpperCase() ?? '—'],
+                      ['Started',   scan?.started_at ? new Date(scan.started_at).toLocaleString() : '—'],
+                      ['Duration',  scan?.started_at && scan?.completed_at
+                        ? `${Math.round((new Date(scan.completed_at).getTime() - new Date(scan.started_at).getTime()) / 1000)}s`
+                        : '—'],
+                      ['Findings',  String(totalFindings)],
+                      ['Max CVSS',  riskScore > 0 ? riskScore.toFixed(1) : '—'],
+                    ].map(([k, v]) => (
+                      <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#6a7b8a' }}>{k}</span>
+                        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#c8d3e0', fontWeight: 500 }}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Severity Breakdown bar */}
+                <div style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.06)',
+                  borderRadius: 12, padding: 18, marginBottom: 16 }}>
+                  <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#8899aa',
+                    letterSpacing: '1.3px', textTransform: 'uppercase', marginBottom: 14, fontWeight: 600 }}>
+                    Finding Severity Breakdown
+                  </div>
+                  {[['Critical', sevCounts.critical, '#ff3355'], ['High', sevCounts.high, '#ff6b35'], ['Medium', sevCounts.medium, '#ffcc00'], ['Low', sevCounts.low, '#00cc88']].map(([label, count, color], i) => {
+                    const pct = totalFindings > 0 ? ((count as number) / totalFindings) * 100 : 0
+                    return (
+                      <div key={label as string} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 11,
+                        animation: 'slide-in-left .4s ease both', animationDelay: `${i * 80}ms` }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color as string, flexShrink: 0, boxShadow: `0 0 6px ${color}90` }} />
+                        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#8899aa', width: 60, fontWeight: 500 }}>{label as string}</span>
+                        <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,.05)', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${pct}%`, height: '100%',
+                            background: `linear-gradient(90deg, ${color}, ${color}cc)`,
+                            borderRadius: 3, transition: 'width .7s ease',
+                          }} />
+                        </div>
+                        <span style={{ fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 700, color: '#ffffff', width: 24, textAlign: 'right' }}>{count as number}</span>
+                      </div>
+                    )
+                  })}
+                  {totalFindings > 0 && (
+                    <div style={{ height: 9, borderRadius: 5, overflow: 'hidden', display: 'flex', marginTop: 16 }}>
+                      {sevCounts.critical > 0 && <div style={{ flex: sevCounts.critical, background: 'linear-gradient(90deg, #ff3355, #d92644)' }} />}
+                      {sevCounts.high     > 0 && <div style={{ flex: sevCounts.high,     background: 'linear-gradient(90deg, #ff6b35, #e85a25)' }} />}
+                      {sevCounts.medium   > 0 && <div style={{ flex: sevCounts.medium,   background: 'linear-gradient(90deg, #ffcc00, #d9af00)' }} />}
+                      {sevCounts.low      > 0 && <div style={{ flex: sevCounts.low,      background: 'linear-gradient(90deg, #00cc88, #00a370)' }} />}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={() => {
+                      if (!report) return
+                      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a'); a.href = url
+                      a.download = `WEB-${(scan?.id ?? '').slice(-6).toUpperCase()}-report.json`
+                      a.click(); URL.revokeObjectURL(url)
+                    }}
+                    disabled={!report}
+                    onMouseEnter={e => { if (report) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,229,204,.42)' } }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,229,204,.32)' }}
+                    style={{
+                      padding: '12px 22px', borderRadius: 10,
+                      background: report ? 'linear-gradient(135deg, #00e5cc, #00b3a1)' : 'rgba(255,255,255,.05)',
+                      color: report ? '#04110e' : '#5a6a7a', border: 'none', fontSize: 13,
+                      fontFamily: 'var(--font-display)', fontWeight: 700,
+                      cursor: report ? 'pointer' : 'not-allowed',
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      boxShadow: report ? '0 4px 16px rgba(0,229,204,.32)' : 'none',
+                      transition: 'all .2s ease',
+                    }}>
+                    <Download size={15} /> Download Report (JSON)
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────  RECENT SCANS — BULLETED LIST  ───────────────────── */}
+      {recentScans.length > 0 && (
+        <div style={{
+          padding: '20px 26px', borderRadius: 16,
+          background: 'linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.012))',
+          border: '1px solid rgba(255,255,255,.06)',
+          position: 'relative', overflow: 'hidden',
+          animation: 'fade-in-up .4s ease',
+        }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1,
+            background: 'linear-gradient(90deg, transparent, rgba(167,139,250,.3), transparent)' }} />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(167,139,250,.1)',
+              border: '1px solid rgba(167,139,250,.28)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <History size={14} color="#a78bfa" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontFamily: 'var(--font-display)', color: '#e8edf5', fontWeight: 700, letterSpacing: '-.2px' }}>
+                Recent Web Scans
+              </div>
+              <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#6a7b8a',
+                textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 2, fontWeight: 600 }}>
+                {recentScans.length} {recentScans.length === 1 ? 'entry' : 'entries'} · click to load
+              </div>
+            </div>
+          </div>
+
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, position: 'relative' }}>
+            <div style={{ position: 'absolute', left: 7, top: 8, bottom: 8, width: 1,
+              background: 'linear-gradient(180deg, transparent, rgba(167,139,250,.18) 15%, rgba(167,139,250,.18) 85%, transparent)',
+              pointerEvents: 'none' }} />
+
+            {recentScans.map((s, idx) => {
+              const isActive = scan?.id === s.id
+              const statusColor = s.status === 'completed' ? '#00cc88'
+                : s.status === 'failed' ? '#ff3355'
+                : s.status === 'running' || s.status === 'pending' ? '#00e5cc' : '#ffcc00'
+              const statusBg = s.status === 'completed' ? 'rgba(0,204,136,.1)'
+                : s.status === 'failed' ? 'rgba(255,51,85,.1)'
+                : s.status === 'running' || s.status === 'pending' ? 'rgba(0,229,204,.1)' : 'rgba(255,204,0,.1)'
+              return (
+                <li key={s.id}
                   onClick={() => {
                     if (!isActive) {
                       router.replace(`/scans/web?scanId=${s.id}`)
                       loadScan(s.id)
                     }
                   }}
-                  style={{ padding: '10px 8px', borderRadius: 8, borderBottom: '1px solid rgba(255,255,255,.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: isActive ? 'default' : 'pointer', background: isActive ? 'rgba(0,229,204,.04)' : 'transparent', marginBottom: 2, transition: 'background .15s' }}
-                  onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,.03)' }}
-                  onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ fontSize: 12, color: isActive ? '#00e5cc' : '#c8d3e0', fontFamily: 'var(--font-display)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160 }}>{s.target}</p>
-                    <p style={{ fontSize: 10, color: '#4a5568', fontFamily: 'var(--font-mono)' }}>{new Date(s.created_at).toLocaleDateString()}</p>
-                  </div>
-                  <span style={{ display: 'inline-block', fontSize: 9, padding: '2px 8px', borderRadius: 10, fontFamily: 'var(--font-mono)', flexShrink: 0,
-                    background: s.status === 'completed' ? 'rgba(0,204,136,.1)' : s.status === 'running' || s.status === 'pending' ? 'rgba(0,229,204,.1)' : 'rgba(255,51,85,.1)',
-                    color: s.status === 'completed' ? '#00cc88' : s.status === 'running' || s.status === 'pending' ? '#00e5cc' : '#ff3355',
-                    border: `1px solid ${s.status === 'completed' ? 'rgba(0,204,136,.3)' : s.status === 'running' || s.status === 'pending' ? 'rgba(0,229,204,.3)' : 'rgba(255,51,85,.3)'}`,
+                  style={{
+                    position: 'relative', display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '11px 12px 11px 28px', marginBottom: 4, borderRadius: 9,
+                    cursor: isActive ? 'default' : 'pointer', transition: 'all .18s ease',
+                    border: '1px solid transparent',
+                    background: isActive ? `${statusColor}0d` : 'transparent',
+                    animation: 'slide-in-left .35s ease both', animationDelay: `${idx * 50}ms`,
+                  }}
+                  onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = `${statusColor}0d`; e.currentTarget.style.borderColor = `${statusColor}28`; e.currentTarget.style.transform = 'translateX(3px)' } }}
+                  onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.transform = 'translateX(0)' } }}>
+
+                  <span style={{
+                    position: 'absolute', left: 3, top: '50%', transform: 'translateY(-50%)',
+                    width: 9, height: 9, borderRadius: '50%',
+                    background: statusColor,
+                    boxShadow: `0 0 8px ${statusColor}aa, 0 0 0 3px ${statusBg}`,
+                    flexShrink: 0,
+                    animation: (s.status === 'running' || s.status === 'pending') ? 'pulse-dot 1s infinite' : 'none',
+                  }} />
+
+                  <span style={{
+                    fontSize: 13, color: isActive ? statusColor : '#e8edf5', fontFamily: 'var(--font-mono)',
+                    fontWeight: 600, letterSpacing: '0.3px', flex: 1, minWidth: 0,
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {s.target}
+                  </span>
+
+                  <span style={{
+                    fontSize: 10.5, fontFamily: 'var(--font-mono)', color: '#7a8a9a',
+                    flexShrink: 0, letterSpacing: '0.3px',
+                  }}>
+                    {new Date(s.created_at).toLocaleString(undefined, {
+                      month: 'short', day: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </span>
+
+                  <span style={{
+                    fontSize: 9, padding: '3px 10px', borderRadius: 11, fontFamily: 'var(--font-mono)',
+                    background: statusBg, color: statusColor,
+                    border: `1px solid ${statusColor}40`,
+                    textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 700,
+                    flexShrink: 0, minWidth: 78, textAlign: 'center',
                   }}>
                     {s.status}
                   </span>
-                </div>
+                </li>
               )
             })}
-          </div>
+          </ul>
         </div>
-
-        {/* ── Right Panel ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Pipeline */}
-          <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, padding: '22px 28px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-              <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.5px', color: '#4a5568' }}>Scan Pipeline</p>
-              {isScanning && activeStageId && (
-                <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#ff6b35' }}>
-                  Stage {WEB_PIPELINE.findIndex(s => s.id === activeStageId) + 1} / {WEB_PIPELINE.length}
-                  {' · '}{stageProgress[activeStageId] || 0}%
-                </span>
-              )}
-              {isDone && <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#00cc88' }}>All stages complete</span>}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-start' }}>
-              {WEB_PIPELINE.map((stage, i) => {
-                const status = getStageStatus(stage.id)
-                const isLast = i === WEB_PIPELINE.length - 1
-                const fill = connectorFill(stage.id)
-                const StageIcon = stage.id === 'web_init' ? Globe
-                  : stage.id === 'web_headers' ? Lock
-                  : stage.id === 'web_active' ? Search
-                  : stage.id === 'risk' ? AlertTriangle
-                  : FileText
-                return (
-                  <div key={stage.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-                    {!isLast && (
-                      <div style={{ position: 'absolute', top: 19, left: '50%', width: '100%', height: 2, background: 'rgba(255,255,255,.05)', zIndex: 0 }}>
-                        <div style={{ height: '100%', width: `${fill}%`, background: stage.color, transition: 'width .4s linear', boxShadow: fill > 0 ? `0 0 6px ${stage.color}80` : 'none' }} />
-                      </div>
-                    )}
-                    <div style={{
-                      width: 38, height: 38, borderRadius: '50%', zIndex: 1, flexShrink: 0,
-                      background: status === 'done' ? `${stage.color}18` : status === 'active' ? `${stage.color}12` : 'rgba(255,255,255,.03)',
-                      border: `2px solid ${status !== 'pending' ? stage.color : 'rgba(255,255,255,.08)'}`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: status === 'active' ? `0 0 18px ${stage.color}60` : 'none',
-                      transition: 'all .4s',
-                      animation: status === 'active' ? 'pulse-node 1.5s ease-in-out infinite' : 'none',
-                    }}>
-                      {status === 'done'
-                        ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={stage.color} strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
-                        : <StageIcon size={14} color={status === 'active' ? stage.color : '#2a3545'} />}
-                    </div>
-                    <div style={{ marginTop: 10, textAlign: 'center' }}>
-                      <p style={{ fontSize: 10, fontFamily: 'var(--font-display)', fontWeight: 600, color: status === 'done' ? stage.color : status === 'active' ? '#e8edf5' : '#4a5568', marginBottom: 2 }}>{stage.label}</p>
-                      <p style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#2a3545' }}>{stage.est}</p>
-                    </div>
-                    {status === 'active' && (
-                      <>
-                        <div style={{ width: '65%', height: 2, background: 'rgba(255,255,255,.05)', borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', background: stage.color, width: `${stageProgress[stage.id] || 0}%`, transition: 'width .3s', boxShadow: `0 0 6px ${stage.color}` }} />
-                        </div>
-                        <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: stage.color, marginTop: 3 }}>{stageProgress[stage.id] || 0}%</span>
-                      </>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Terminal */}
-          <div style={{ background: '#050709', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, overflow: 'hidden' }}>
-            <div style={{ padding: '10px 16px', background: 'rgba(255,255,255,.03)', borderBottom: '1px solid rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57' }} />
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#febc2e' }} />
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#28c840' }} />
-              <span style={{ marginLeft: 8, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', flex: 1 }}>
-                securex-engine — web-scan — {scan ? scan.id.slice(-8) : 'bash'}
-              </span>
-              {isScanning && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontFamily: 'var(--font-mono)', color: '#ff6b35', padding: '2px 7px', background: 'rgba(255,107,53,.1)', borderRadius: 8, border: '1px solid rgba(255,107,53,.2)' }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ff6b35', display: 'inline-block', animation: 'pulse-dot .8s infinite' }} />
-                  LIVE
-                </span>
-              )}
-            </div>
-            <div ref={termRef} style={{ padding: '14px 20px', minHeight: 210, maxHeight: 280, overflowY: 'auto', fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.75, scrollBehavior: 'smooth' }}>
-              {logs.length === 0 && !isScanning && (
-                <span style={{ color: '#2a3545' }}>{'>'} Configure target URL and press Launch Scan to begin...</span>
-              )}
-              {logs.map((log, i) => <TerminalLine key={log.id || i} log={log} />)}
-              {isScanning && <span style={{ color: '#00e5cc', animation: 'blink 1s step-start infinite' }}>▌</span>}
-            </div>
-          </div>
-
-          {/* Results */}
-          {(isDone || (isFailed && vulns.length > 0)) && (
-            <div style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)', borderRadius: 14, overflow: 'hidden' }}>
-
-              {/* Summary stats */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', borderBottom: '1px solid rgba(255,255,255,.06)' }}>
-                {[
-                  [String(totalFindings), 'Findings',      '#ff6b35'],
-                  [String(owaspHits),     'OWASP Hits',    '#ffcc00'],
-                  [String(sevCounts.critical), 'Critical', '#ff3355'],
-                  [String(sevCounts.high),     'High',     '#ff6b35'],
-                ].map(([val, label, col]) => (
-                  <div key={label} style={{ padding: '18px 20px', borderRight: '1px solid rgba(255,255,255,.04)', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
-                    <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(ellipse at bottom, ${col}08 0%, transparent 70%)` }} />
-                    <div style={{ fontSize: 26, fontWeight: 800, color: col, fontFamily: 'var(--font-display)', lineHeight: 1 }}>{val}</div>
-                    <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', marginTop: 4 }}>{label}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Tabs */}
-              <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,.06)', padding: '0 22px', gap: 4 }}>
-                {(['findings', 'owasp', 'report'] as const).map(t => (
-                  <button key={t} onClick={() => setActiveTab(t)} style={{
-                    padding: '12px 14px', background: 'none', border: 'none',
-                    borderBottom: `2px solid ${activeTab === t ? '#00e5cc' : 'transparent'}`,
-                    color: activeTab === t ? '#00e5cc' : '#4a5568',
-                    fontSize: 10, fontFamily: 'var(--font-mono)', cursor: 'pointer',
-                    textTransform: 'uppercase', letterSpacing: '1.2px', transition: 'color .2s',
-                  }}>
-                    {t === 'findings' ? `Findings (${totalFindings})` : t === 'owasp' ? 'OWASP Map' : 'Report'}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ padding: '20px 22px' }}>
-
-                {/* ── FINDINGS TAB ── */}
-                {activeTab === 'findings' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {vulns.length === 0 && (
-                      <div style={{ textAlign: 'center', padding: '32px 0', color: '#4a5568', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                        <Shield size={28} color="#2a3545" style={{ margin: '0 auto 10px', display: 'block' }} />
-                        No findings detected
-                      </div>
-                    )}
-                    {vulns.map((v: any, idx: number) => {
-                      const sev = v.severity as string
-                      const isOpen = expandedVuln === v.id
-                      return (
-                        <div key={v.id} style={{ borderRadius: 10, background: isOpen ? SEV_BG[sev] : 'rgba(255,255,255,.015)', border: `1px solid ${isOpen ? (SEV_COLOR[sev] || '#00e5cc') + '30' : 'rgba(255,255,255,.06)'}`, overflow: 'hidden', transition: 'all .25s', animation: `fade-in-up .3s ease ${idx * 40}ms both` }}>
-                          <div onClick={() => setExpandedVuln(isOpen ? null : v.id)} style={{ padding: '13px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, fontFamily: 'var(--font-mono)', fontWeight: 700, background: `${SEV_COLOR[sev]}18`, color: SEV_COLOR[sev], border: `1px solid ${SEV_COLOR[sev]}30`, flexShrink: 0 }}>
-                              {sev.toUpperCase()}
-                            </span>
-                            {v.owasp && (
-                              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4d9eff', background: 'rgba(77,158,255,.1)', padding: '2px 7px', borderRadius: 4, flexShrink: 0 }}>{v.owasp}</span>
-                            )}
-                            <span style={{ fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 600, color: '#e8edf5', flex: 1 }}>{v.title}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>CVSS {v.cvss_score}</span>
-                              {isOpen ? <ChevronDown size={14} color="#4a5568" /> : <ChevronRight size={14} color="#4a5568" />}
-                            </div>
-                          </div>
-                          {isOpen && (
-                            <div style={{ borderTop: `1px solid ${SEV_COLOR[sev]}18`, padding: '14px 16px' }}>
-                              <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#8899aa', lineHeight: 1.6, marginBottom: 12 }}>{v.description}</p>
-                              {v.affected_url && (
-                                <div style={{ marginBottom: 10 }}>
-                                  <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4d9eff', background: 'rgba(77,158,255,.08)', padding: '3px 8px', borderRadius: 4, border: '1px solid rgba(77,158,255,.2)' }}>
-                                    URL: {v.affected_url}
-                                  </span>
-                                </div>
-                              )}
-                              {v.evidence && (
-                                <div style={{ marginBottom: 12 }}>
-                                  <pre style={{ margin: 0, padding: '10px 12px', background: '#03040a', borderRadius: 8, fontFamily: 'var(--font-mono)', fontSize: 11, color: '#4d9eff', lineHeight: 1.6, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                                    {v.evidence}
-                                  </pre>
-                                </div>
-                              )}
-                              <div style={{ background: 'rgba(0,204,136,.05)', border: '1px solid rgba(0,204,136,.15)', borderRadius: 8, padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                                <Shield size={14} color="#00cc88" style={{ flexShrink: 0, marginTop: 1 }} />
-                                <p style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#8899aa', lineHeight: 1.6, margin: 0 }}>
-                                  <strong style={{ color: '#00cc88' }}>Remediation: </strong>{v.remediation}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {/* ── OWASP TAB ── */}
-                {activeTab === 'owasp' && (
-                  <div>
-                    <p style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', marginBottom: 16 }}>
-                      OWASP Top 10 (2021) coverage —{' '}
-                      <span style={{ color: '#ff3355' }}>{owaspHits} {owaspHits === 1 ? 'category' : 'categories'} affected</span>
-                    </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 20 }}>
-                      {owaspData.map(o => {
-                        const col = o.count > 0 ? (SEV_COLOR[o.sev] || '#4a5568') : '#1e2535'
-                        const bg = o.count > 0 ? (SEV_BG[o.sev] || 'transparent') : 'transparent'
-                        return (
-                          <div key={o.id} style={{ borderRadius: 10, background: bg, border: `1px solid ${o.count > 0 ? col + '30' : 'rgba(255,255,255,.05)'}`, overflow: 'hidden', position: 'relative' }}>
-                            {o.count > 0 && <div style={{ height: 3, background: `linear-gradient(90deg, ${col}, ${col}60)`, width: '100%' }} />}
-                            <div style={{ padding: '12px 8px', textAlign: 'center' }}>
-                              <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 700, color: o.count > 0 ? col : '#2a3545', marginBottom: 4 }}>{o.short}</div>
-                              <div style={{ fontSize: 9, fontFamily: 'var(--font-display)', color: o.count > 0 ? '#8899aa' : '#2a3545', minHeight: 26, lineHeight: 1.4, marginBottom: 8 }}>{o.name}</div>
-                              <div style={{ fontSize: 22, fontFamily: 'var(--font-display)', fontWeight: 800, color: o.count > 0 ? col : '#1e2535', textShadow: o.count > 0 ? `0 0 16px ${col}60` : 'none' }}>{o.count}</div>
-                              {o.count > 0 && (
-                                <div style={{ fontSize: 8, fontFamily: 'var(--font-mono)', color: col, marginTop: 2, letterSpacing: '.5px' }}>{o.sev.toUpperCase()}</div>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.05)', borderRadius: 10, padding: 16 }}>
-                      <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 14 }}>Severity Distribution</p>
-                      <SeverityBar label="Critical" count={sevCounts.critical} max={maxSev} color="#ff3355" />
-                      <SeverityBar label="High"     count={sevCounts.high}     max={maxSev} color="#ff6b35" />
-                      <SeverityBar label="Medium"   count={sevCounts.medium}   max={maxSev} color="#ffcc00" />
-                      <SeverityBar label="Low"      count={sevCounts.low}      max={maxSev} color="#00cc88" />
-                    </div>
-                  </div>
-                )}
-
-                {/* ── REPORT TAB ── */}
-                {activeTab === 'report' && (
-                  <div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                      <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 10, padding: 16 }}>
-                        <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 12 }}>Executive Summary</p>
-                        <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: '#8899aa', lineHeight: 1.7 }}>
-                          Web assessment of <span style={{ color: '#00e5cc' }}>{scan?.target}</span> found{' '}
-                          <span style={{ color: '#ff3355' }}>{sevCounts.critical} critical</span>,{' '}
-                          <span style={{ color: '#ff6b35' }}>{sevCounts.high} high</span>,{' '}
-                          <span style={{ color: '#ffcc00' }}>{sevCounts.medium} medium</span> and{' '}
-                          <span style={{ color: '#00cc88' }}>{sevCounts.low} low</span> severity findings across {owaspHits} OWASP categories.
-                          {sevCounts.critical > 0 && ' Immediate remediation required.'}
-                        </p>
-                      </div>
-                      <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 10, padding: 16 }}>
-                        <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 12 }}>Scan Metadata</p>
-                        {[
-                          ['Target',     scan?.target ?? '—'],
-                          ['Scan ID',    scan?.id?.slice(-8).toUpperCase() ?? '—'],
-                          ['Started',    scan?.started_at ? new Date(scan.started_at).toLocaleString() : '—'],
-                          ['Duration',   scan?.started_at && scan?.completed_at
-                            ? `${Math.round((new Date(scan.completed_at).getTime() - new Date(scan.started_at).getTime()) / 1000)}s`
-                            : '—'],
-                          ['Findings',   String(totalFindings)],
-                          ['Max CVSS',   riskScore > 0 ? riskScore.toFixed(1) : '—'],
-                        ].map(([k, v]) => (
-                          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
-                            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568' }}>{k}</span>
-                            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#c8d3e0' }}>{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
-                      <p style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 14 }}>Finding Severity Breakdown</p>
-                      <SeverityBar label="Critical" count={sevCounts.critical} max={maxSev} color="#ff3355" />
-                      <SeverityBar label="High"     count={sevCounts.high}     max={maxSev} color="#ff6b35" />
-                      <SeverityBar label="Medium"   count={sevCounts.medium}   max={maxSev} color="#ffcc00" />
-                      <SeverityBar label="Low"      count={sevCounts.low}      max={maxSev} color="#00cc88" />
-                      {totalFindings > 0 && (
-                        <div style={{ height: 8, borderRadius: 6, overflow: 'hidden', display: 'flex', marginTop: 14 }}>
-                          {sevCounts.critical > 0 && <div style={{ flex: sevCounts.critical, background: '#ff3355', boxShadow: '0 0 8px #ff335580' }} />}
-                          {sevCounts.high > 0     && <div style={{ flex: sevCounts.high,     background: '#ff6b35' }} />}
-                          {sevCounts.medium > 0   && <div style={{ flex: sevCounts.medium,   background: '#ffcc00' }} />}
-                          {sevCounts.low > 0      && <div style={{ flex: sevCounts.low,      background: '#00cc88' }} />}
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 10 }}>
-                      <button style={{ flex: 1, padding: '11px', borderRadius: 9, background: 'rgba(255,255,255,.04)', color: '#8899aa', border: '1px solid rgba(255,255,255,.08)', fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600, cursor: 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                        <Download size={13} /> Export PDF (coming soon)
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-        @keyframes pulse-node { 0%,100%{box-shadow:0 0 0 0 rgba(0,229,204,.15)} 50%{box-shadow:0 0 22px 6px rgba(0,229,204,.35)} }
-        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.55;transform:scale(1.25)} }
+        @keyframes pulse-ring { 0%{transform:scale(0.85);opacity:0.55} 80%{opacity:0} 100%{transform:scale(1.6);opacity:0} }
+        @keyframes pipe-beam { 0%{transform:translateX(-40%)} 100%{transform:translateX(250%)} }
+        @keyframes rail-beam { 0%{transform:translateY(-100%)} 100%{transform:translateY(300%)} }
+        @keyframes edge-shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        @keyframes check-pop { 0%{transform:scale(0);opacity:0} 60%{transform:scale(1.25);opacity:1} 100%{transform:scale(1)} }
+        @keyframes icon-bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-1.5px)} }
+        @keyframes term-scan { 0%{transform:translateY(-100%)} 100%{transform:translateY(2000%)} }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-3px)} 75%{transform:translateX(3px)} }
+        @keyframes fade-in-up { 0%{opacity:0;transform:translateY(10px)} 100%{opacity:1;transform:translateY(0)} }
+        @keyframes slide-in-up { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes slide-in-left { from{opacity:0;transform:translateX(-10px)} to{opacity:1;transform:translateX(0)} }
         @keyframes fade-in { from{opacity:0} to{opacity:1} }
-        @keyframes fade-in-up { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes pulse-soft { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.78;transform:scale(1.04)} }
       `}</style>
     </div>
   )
