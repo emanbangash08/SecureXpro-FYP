@@ -189,6 +189,7 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false)
   const [role, setRole] = useState<'user'|'agent'>('user')
   const [tickerIdx, setTickerIdx] = useState(0)
+  const loginInProgress = useRef(false)
   const [tickerVisible, setTickerVisible] = useState(true)
   const { theme, toggleTheme } = useTheme()
 
@@ -211,11 +212,11 @@ export default function LoginPage() {
     return () => clearInterval(cycle)
   }, [])
 
-  const { login, user, isLoading } = useAuth()
+  const { login, logout, user, isLoading } = useAuth()
 
-  // Redirect already-authenticated users to their home
+  // Redirect already-authenticated users to their home (skip during active login flow)
   useEffect(() => {
-    if (isLoading || !user) return
+    if (isLoading || !user || loginInProgress.current) return
     if (user.role === 'admin') router.replace('/admin')
     else if (user.role === 'agent') router.replace('/agent-dashboard')
     else router.replace('/dashboard')
@@ -225,14 +226,34 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
+    loginInProgress.current = true
     try {
-      const role = await login(email, password)
-      if (role === 'admin') router.push('/admin')
-      else if (role === 'agent') router.push('/agent-dashboard')
+      const returnedRole = await login(email, password)
+
+      // "Field Agent" tab: must be agent; "User" tab: must be admin or user (not agent)
+      const roleMismatch =
+        (role === 'agent' && returnedRole !== 'agent') ||
+        (role === 'user'  && returnedRole === 'agent')
+
+      if (roleMismatch) {
+        logout()
+        setError(
+          role === 'agent'
+            ? 'No Field Agent account found with these credentials.'
+            : 'These credentials belong to a Field Agent account. Switch to the Field Agent tab.'
+        )
+        setLoading(false)
+        return
+      }
+
+      if (returnedRole === 'admin') router.push('/admin')
+      else if (returnedRole === 'agent') router.push('/agent-dashboard')
       else router.push('/dashboard')
     } catch (err: unknown) {
       setError((err as Error).message || 'Login failed. Check your credentials.')
       setLoading(false)
+    } finally {
+      loginInProgress.current = false
     }
   }
 

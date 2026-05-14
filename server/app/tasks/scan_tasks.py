@@ -327,46 +327,86 @@ async def _execute_scan(scan_id: str) -> None:
             except Exception:
                 pass
 
-            # Sub-phase: web_zap — OWASP ZAP Docker active scan
+            # Sub-phase: web_zap — OWASP ZAP Docker active scan (WSL2)
             await _set_phase(db, scan_id, "web_zap")
             await _log(db, scan_id, "web_zap", "cmd",
                        "> docker run ghcr.io/zaproxy/zaproxy:stable zap.sh -daemon --spider --ascan")
             from app.services import zap_client
+            await _log(db, scan_id, "web_zap", "info",
+                       "  Checking Docker availability (WSL2)...")
             docker_ok = await zap_client.check_docker_available()
             if docker_ok:
                 await _log(db, scan_id, "web_zap", "info",
                            "  Docker available — launching ZAP container...")
                 await _log(db, scan_id, "web_zap", "info",
                            f"  Target: {web_url}")
-                await _log(db, scan_id, "web_zap", "info",
-                           "  Phase 1: Spider (passive crawl)...")
+
+                # Progress logger runs concurrently so the UI doesn't appear frozen
+                _zap_stop = asyncio.Event()
+
+                async def _zap_progress():
+                    _steps = [
+                        (20,  "info",    "  ZAP daemon initialising (this takes ~30-60s on first run)..."),
+                        (50,  "info",    "  ZAP daemon ready — starting spider crawl..."),
+                        (90,  "info",    "  Spider crawl in progress — discovering endpoints..."),
+                        (150, "info",    "  Active scan started — testing injection points..."),
+                        (210, "info",    "  Active scan running — testing XSS vectors..."),
+                        (270, "info",    "  Active scan running — testing path traversal & SQLi..."),
+                        (330, "info",    "  Active scan running — testing CORS & security headers..."),
+                        (400, "warning", "  Still scanning — large site or slow target, please wait..."),
+                        (470, "info",    "  Finalising ZAP results..."),
+                    ]
+                    _t0 = asyncio.get_event_loop().time()
+                    for _delay, _lvl, _msg in _steps:
+                        _remaining = _delay - (asyncio.get_event_loop().time() - _t0)
+                        if _remaining > 0:
+                            try:
+                                await asyncio.wait_for(
+                                    asyncio.shield(asyncio.Event().wait()),
+                                    timeout=_remaining,
+                                )
+                            except asyncio.TimeoutError:
+                                pass
+                        if _zap_stop.is_set():
+                            break
+                        await _log(db, scan_id, "web_zap", _lvl, _msg)
+
+                _progress_task = asyncio.create_task(_zap_progress())
                 try:
                     _zap_findings = await zap_client.run_zap_scan(
                         web_url,
                         scan_id_suffix=scan_id[-8:],
                     )
                     _all_web += _zap_findings
-
-                    if _zap_findings:
-                        await _log(db, scan_id, "web_zap", "info",
-                                   "  Phase 2: Active scan complete")
-                        for _f in _zap_findings[:10]:
-                            _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
-                            await _log(db, scan_id, "web_zap", _lvl,
-                                       f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
-                        await _log(db, scan_id, "web_zap", "success",
-                                   f"  [+] ZAP scan complete — {len(_zap_findings)} finding(s)")
-                    else:
-                        await _log(db, scan_id, "web_zap", "success",
-                                   "  [+] ZAP scan complete — no additional findings")
                 except Exception as _zap_exc:
                     await _log(db, scan_id, "web_zap", "warning",
                                f"  [!] ZAP scan error: {_zap_exc}")
+                    _zap_findings = []
+                finally:
+                    _zap_stop.set()
+                    _progress_task.cancel()
+                    try:
+                        await _progress_task
+                    except asyncio.CancelledError:
+                        pass
+
+                if _zap_findings:
+                    await _log(db, scan_id, "web_zap", "info",
+                               "  Phase 2: Active scan complete")
+                    for _f in _zap_findings[:10]:
+                        _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                        await _log(db, scan_id, "web_zap", _lvl,
+                                   f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                    await _log(db, scan_id, "web_zap", "success",
+                               f"  [+] ZAP scan complete — {len(_zap_findings)} finding(s)")
+                else:
+                    await _log(db, scan_id, "web_zap", "success",
+                               "  [+] ZAP scan complete — no additional findings")
             else:
                 await _log(db, scan_id, "web_zap", "warning",
-                           "  [!] Docker not available — skipping ZAP scan")
+                           "  [!] Docker not available in WSL2 — skipping ZAP scan")
                 await _log(db, scan_id, "web_zap", "info",
-                           "  Install Docker Desktop to enable OWASP ZAP integration")
+                           "  Run: wsl -d Ubuntu -u root -- service docker start")
 
             await web_service.persist_findings(db, scan_id, _all_web, _host, _port, _scheme)
             _web_results = web_service.make_summary(_resp, web_url, _all_web)
