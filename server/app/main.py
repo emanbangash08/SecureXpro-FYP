@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
 from app.core.database import connect_db, close_db, get_db, create_indexes
+from app.core.rate_limit import limiter
 from app.api.v1.router import api_router
 from app.utils.logger import logger
 
@@ -26,6 +29,10 @@ app = FastAPI(
     description="Unified Vulnerability Assessment and Exploitation Analysis Framework",
     lifespan=lifespan,
 )
+
+# Wire the slowapi rate limiter — see app/core/rate_limit.py
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _cors_origins = settings.CORS_ORIGINS if not settings.DEBUG else ["*"]
 

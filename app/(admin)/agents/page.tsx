@@ -21,10 +21,27 @@ function RegisterAgentModal({ onClose, onCreated }: { onClose: () => void; onCre
       setError('All fields are required.')
       return
     }
+    // Mirrors backend rules in server/app/schemas/user.py (validate_strong_password)
+    const pw = form.password
+    const policy: [boolean, string][] = [
+      [pw.length >= 12,              'Password must be at least 12 characters'],
+      [/[a-z]/.test(pw),             'Password must contain a lowercase letter'],
+      [/[A-Z]/.test(pw),             'Password must contain an uppercase letter'],
+      [/\d/.test(pw),                'Password must contain a digit'],
+      [/[^a-zA-Z0-9]/.test(pw),      'Password must contain a special character'],
+    ]
+    const broken = policy.find(([ok]) => !ok)
+    if (broken) { setError(broken[1]); return }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      setError('Please enter a valid email address.')
+      return
+    }
+
     setLoading(true)
     setError('')
     try {
-      await api.auth.register({ ...form, role: 'agent' })
+      await api.admin.createUser({ ...form, role: 'agent' })
       onCreated()
       onClose()
     } catch (e: any) {

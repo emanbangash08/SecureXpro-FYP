@@ -322,6 +322,52 @@ async def _execute_scan(scan_id: str) -> None:
             except Exception as exc:
                 await _log(db, scan_id, "web_active", "warning", f"  [!] Cookie endpoint check error: {exc}")
 
+            # A04 — Insecure Design (rate limiting on auth endpoints)
+            await _log(db, scan_id, "web_active", "info",
+                       "  Testing auth endpoints for rate limiting (A04: Insecure Design)...")
+            try:
+                _rl_fnd = await web_service.check_rate_limiting(_client, web_url)
+                _all_web += _rl_fnd
+                for _f in _rl_fnd:
+                    await _log(db, scan_id, "web_active", "warning",
+                               f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                if not _rl_fnd:
+                    await _log(db, scan_id, "web_active", "success",
+                               "  [+] Auth endpoints appear to enforce rate limiting")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] Rate limit check error: {exc}")
+
+            # A08 — Software & Data Integrity Failures (Subresource Integrity)
+            await _log(db, scan_id, "web_active", "info",
+                       "  Inspecting HTML for missing Subresource Integrity (A08: Data Integrity)...")
+            try:
+                _sri_fnd = web_service.check_subresource_integrity(_resp, web_url)
+                _all_web += _sri_fnd
+                for _f in _sri_fnd:
+                    await _log(db, scan_id, "web_active", "warning",
+                               f"  [{_f.severity.value.upper()}] {_f.title}")
+                if not _sri_fnd:
+                    await _log(db, scan_id, "web_active", "success",
+                               "  [+] All cross-origin assets have SRI or none are loaded")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] SRI check error: {exc}")
+
+            # A09 — Security Logging & Monitoring Failures
+            await _log(db, scan_id, "web_active", "info",
+                       "  Probing for exposed logs & verbose error pages (A09: Logging)...")
+            try:
+                _log_fnd = await web_service.check_logging_and_monitoring(_client, web_url)
+                _all_web += _log_fnd
+                for _f in _log_fnd[:5]:
+                    _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                    await _log(db, scan_id, "web_active", _lvl,
+                               f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                if not _log_fnd:
+                    await _log(db, scan_id, "web_active", "success",
+                               "  [+] No log exposure or verbose error pages detected")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] Logging check error: {exc}")
+
             try:
                 await _client.aclose()
             except Exception:
@@ -408,13 +454,49 @@ async def _execute_scan(scan_id: str) -> None:
                 await _log(db, scan_id, "web_zap", "info",
                            "  Run: wsl -d Ubuntu -u root -- service docker start")
 
+            # Sub-phase: web_nikto — Nikto Docker misconfiguration scan (WSL2)
+            await _set_phase(db, scan_id, "web_nikto")
+            await _log(db, scan_id, "web_nikto", "cmd",
+                       f"> docker run --rm sullo/nikto -h {web_url} -Tuning 123bde -Format json")
+            from app.services import nikto_client
+            await _log(db, scan_id, "web_nikto", "info",
+                       "  Checking Docker availability for Nikto...")
+            nikto_docker_ok = await nikto_client.check_docker_available()
+            if nikto_docker_ok:
+                await _log(db, scan_id, "web_nikto", "info",
+                           f"  Launching Nikto container — target: {web_url}")
+                await _log(db, scan_id, "web_nikto", "info",
+                           "  Tuning: interesting files, info disclosure, misconfigs, default files, server config")
+                try:
+                    _nikto_fnd = await nikto_client.run_nikto_scan(
+                        web_url,
+                        scan_id_suffix=scan_id[-8:],
+                    )
+                    _all_web += _nikto_fnd
+                    if _nikto_fnd:
+                        for _f in _nikto_fnd[:10]:
+                            _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                            await _log(db, scan_id, "web_nikto", _lvl,
+                                       f"  [{_f.severity.value.upper()}] {_f.title}")
+                        await _log(db, scan_id, "web_nikto", "success",
+                                   f"  [+] Nikto scan complete — {len(_nikto_fnd)} finding(s)")
+                    else:
+                        await _log(db, scan_id, "web_nikto", "success",
+                                   "  [+] Nikto scan complete — no misconfigurations detected")
+                except Exception as _nikto_exc:
+                    await _log(db, scan_id, "web_nikto", "warning",
+                               f"  [!] Nikto scan error: {_nikto_exc}")
+            else:
+                await _log(db, scan_id, "web_nikto", "warning",
+                           "  [!] Docker not available in WSL2 — skipping Nikto scan")
+
             await web_service.persist_findings(db, scan_id, _all_web, _host, _port, _scheme)
             _web_results = web_service.make_summary(_resp, web_url, _all_web)
             await db.scans.update_one(
                 {"_id": ObjectId(scan_id)},
                 {"$set": {"web_results": _web_results, "updated_at": datetime.now(timezone.utc)}},
             )
-            await _log(db, scan_id, "web_zap", "success",
+            await _log(db, scan_id, "web_nikto", "success",
                        f"  [+] Web assessment complete — {len(_all_web)} total finding(s)")
 
         # ── Phase 4: Exploit Analysis ─────────────────────────────────────────

@@ -8,7 +8,8 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.api.deps import require_admin
-from app.schemas.user import UserOut
+from app.schemas.user import UserCreate, UserOut
+from app.services import auth_service
 from app.models.user import UserRole, UserStatus
 from app.utils.helpers import doc_to_out
 
@@ -18,6 +19,23 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 class UserRoleUpdate(BaseModel):
     role: UserRole | None = None
     status: UserStatus | None = None
+
+
+@router.post("/users", response_model=UserOut, status_code=201)
+async def create_user(
+    data: UserCreate,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: UserOut = Depends(require_admin),
+):
+    """
+    Admin-only: create a new user.
+
+    The UserCreate schema enforces:
+      • RFC-valid email (Pydantic EmailStr)
+      • Strong password (>=12 chars, upper/lower/digit/special — see schemas/user.py)
+      • Unique username + email (checked in auth_service.register_user)
+    """
+    return await auth_service.register_user(db, data)
 
 
 @router.get("/users")
