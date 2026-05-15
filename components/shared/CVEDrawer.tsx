@@ -1,11 +1,11 @@
-import { Button } from '@/components/ui/button'
-import { SeverityBadge } from './SeverityBadge'
-import { ExternalLink, Copy } from 'lucide-react'
-import type { CVE } from '@/lib/types'
+import { Button } from "@/components/ui/button";
+import { SeverityBadge } from "./SeverityBadge";
+import { ExternalLink, Copy } from "lucide-react";
+import type { CVE } from "@/lib/types";
 
 interface CVEDrawerProps {
-  cve: CVE
-  onClose: () => void
+  cve: CVE;
+  onClose: () => void;
 }
 
 export function CVEDrawer({ cve, onClose }: CVEDrawerProps) {
@@ -15,7 +15,9 @@ export function CVEDrawer({ cve, onClose }: CVEDrawerProps) {
         {/* Header */}
         <div className="space-y-2">
           <div className="flex items-start justify-between">
-            <h2 className="text-2xl font-bold font-mono text-primary">{cve.cveName}</h2>
+            <h2 className="text-2xl font-bold font-mono text-primary">
+              {cve.cveName}
+            </h2>
             <button
               onClick={onClose}
               className="text-muted-foreground hover:text-foreground transition-colors"
@@ -45,7 +47,9 @@ export function CVEDrawer({ cve, onClose }: CVEDrawerProps) {
           </div>
           <div>
             <p className="text-sm text-muted-foreground mb-1">Known Exploits</p>
-            <p className="text-lg font-semibold text-secondary">{cve.exploitCount}</p>
+            <p className="text-lg font-semibold text-secondary">
+              {cve.exploitCount}
+            </p>
           </div>
         </div>
 
@@ -61,7 +65,13 @@ export function CVEDrawer({ cve, onClose }: CVEDrawerProps) {
         {/* Remediation */}
         <div>
           <h3 className="font-semibold mb-3">Remediation</h3>
-          <div className="p-4 rounded-lg bg-green-900/20 border border-green-500/30 text-sm">
+          <div
+            className="p-4 rounded-lg border text-sm"
+            style={{
+              background: "var(--safe-dim)",
+              borderColor: "rgba(34, 197, 94, 0.3)",
+            }}
+          >
             {cve.remediation}
           </div>
         </div>
@@ -77,7 +87,9 @@ export function CVEDrawer({ cve, onClose }: CVEDrawerProps) {
                   className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-sm"
                 >
                   <p className="font-semibold">{exploit.title}</p>
-                  <p className="text-xs text-muted-foreground font-mono">{exploit.msf_id}</p>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    {exploit.msf_id}
+                  </p>
                   <p className="text-xs text-muted-foreground mt-1 capitalize">
                     Reliability: {exploit.reliability}
                   </p>
@@ -105,5 +117,5 @@ export function CVEDrawer({ cve, onClose }: CVEDrawerProps) {
         </div>
       </div>
     </div>
-  )
+  );
 }

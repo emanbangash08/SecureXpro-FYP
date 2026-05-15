@@ -39,17 +39,29 @@
   --accent-dim: rgba(0, 229, 204, 0.1);
   --accent-glow: rgba(0, 229, 204, 0.35);
 
-  /* Status Colors */
+  /* Status Colors — semantic severity (CVSS traffic-light, shared across modes).
+     `-dim` = rgba badge background. `-tint` = opaque pastel for table rows/cards. */
   --critical: #ef4444;
   --critical-dim: rgba(239, 68, 68, 0.1);
+  --critical-tint: #fef2f2;
   --high: #f97316;
   --high-dim: rgba(249, 115, 22, 0.1);
+  --high-tint: #fff7ed;
   --medium: #eab308;
   --medium-dim: rgba(234, 179, 8, 0.1);
-  --low: #10b981;
-  --low-dim: rgba(16, 185, 129, 0.1);
-  --info: #0ea5e9;
-  --info-dim: rgba(14, 165, 233, 0.1);
+  --medium-tint: #fefce8;
+  --low: #22c55e; /* Safe Green — CVSS Low */
+  --low-dim: rgba(34, 197, 94, 0.1);
+  --low-tint: #f0fdf4;
+  --safe: #22c55e; /* alias of --low for "passed / no-finding" semantics */
+  --safe-dim: rgba(34, 197, 94, 0.1);
+  --safe-tint: #f0fdf4;
+  --info: #94a3b8; /* Neutral Slate — Info / None */
+  --info-dim: rgba(148, 163, 184, 0.14);
+  --info-tint: #f8fafc;
+  /* Sky Pulse — interactive/data accent (charts, running status, hover lifts) */
+  --brand-sky: #38bdf8;
+  --brand-sky-dim: rgba(56, 189, 248, 0.14);
 
   /* Text */
   --text-primary: #ffffff;
@@ -188,47 +200,52 @@
    white surfaces. Each token mirrors its dark-mode counterpart so any
    migrated component reads correctly in both modes. */
 :root[data-theme="light"] {
-  /* Page canvas — soft tinted slate so white cards visibly float on it */
-  --bg-base: #eef2f7;
+  /* "Abyss & Frost" — deep-navy chrome (sidebar, navbar) over a soft Frost
+     canvas with white cards. Professional, technical, trustworthy. */
 
+  /* Brand palette (named per spec) */
+  --brand-abyss: #0f1c2e; /* Sidebars, nav headers, hero sections */
+  --brand-navy-deep: #1e3a5f; /* Hover / pressed surfaces on the chrome */
+  --brand-signal: #2563eb; /* Primary CTAs, links, selected states */
+  --brand-frost: #f0f4fa; /* Page background, alt-row fills */
+
+  /* Page canvas */
+  --bg-base: #f0f4fa; /* Frost */
   --bg-surface: #ffffff;
   --bg-elevated: #ffffff;
   --bg-overlay: #ffffff;
 
-  /* Solid white card surfaces with off-white nested variants */
   --surface-1: #ffffff;
   --surface-2: #f8fafc;
-  --surface-3: #f1f5f9;
+  --surface-3: #eef2f9;
   --surface-input: #f8fafc;
   --surface-elevated: #ffffff;
 
-  /* Slate borders — proper visibility on white */
-  --border-subtle: rgba(15, 23, 42, 0.06);
-  --border-default: rgba(15, 23, 42, 0.1);
-  --border-strong: rgba(15, 23, 42, 0.2);
+  --border-subtle: rgba(15, 28, 46, 0.06);
+  --border-default: rgba(15, 28, 46, 0.12);
+  --border-strong: rgba(15, 28, 46, 0.22);
 
-  /* Brand accent — bright cyan for buttons/glows stays the same, but a
-     darker teal text variant is used wherever accent appears as text/icon */
-  --accent: #00e5cc;
-  --accent-dim: rgba(0, 179, 161, 0.14);
-  --accent-glow: rgba(0, 179, 161, 0.32);
-  --accent-text: #008577; /* readable on white — 4.5:1 contrast */
+  /* Signal Blue is the primary CTA / link / focus color */
+  --accent: #2563eb;
+  --accent-dim: rgba(37, 99, 235, 0.12);
+  --accent-glow: rgba(37, 99, 235, 0.38);
+  --accent-text: #1d4ed8;
   --accent-on-bg: #ffffff;
-  --accent-strong: #00a085;
+  --accent-strong: #1e3a5f; /* Navy Deep — pressed/hover for accent */
 
-  /* Tint stops — slightly stronger so subtle gradients register on white */
-  --tint-cyan: rgba(0, 179, 161, 0.08);
-  --tint-blue: rgba(99, 102, 241, 0.07);
-  --tint-purple: rgba(168, 85, 247, 0.07);
-  --tint-red: rgba(244, 63, 94, 0.06);
+  /* Tint stops — Signal / Sky / navy echoes for overlays */
+  --tint-cyan: rgba(56, 189, 248, 0.1); /* Sky Pulse */
+  --tint-blue: rgba(37, 99, 235, 0.1); /* Signal Blue */
+  --tint-purple: rgba(99, 102, 241, 0.08);
+  --tint-red: rgba(239, 68, 68, 0.06);
 
-  /* Dark text ramp — slate scale, mirrors the dark mode brightness ramp */
-  --text-primary: #0a0f1c;
+  /* Slate text ramp — Abyss strong, #1E293B body */
+  --text-primary: #0f1c2e;
   --text-secondary: #334155;
   --text-muted: #64748b;
-  --text-accent: #6366f1;
+  --text-accent: #2563eb;
 
-  --text-strong: #0a0f1c;
+  --text-strong: #0f1c2e;
   --text-body: #1e293b;
   --text-soft: #334155;
   --text-dim: #475569;
@@ -236,94 +253,88 @@
   --text-faintest: #94a3b8;
   --text-quietest: #cbd5e1;
 
-  /* Body radial — soft brand-color drifts that read on the light canvas */
+  /* Hero body — soft Signal/Sky drifts on the Frost canvas */
   --hero-radial:
-    radial-gradient(circle at 12% 55%, rgba(0, 179, 161, 0.1), transparent 35%),
+    radial-gradient(circle at 8% 18%, rgba(37, 99, 235, 0.12), transparent 42%),
     radial-gradient(
-      circle at 88% 25%,
-      rgba(99, 102, 241, 0.08),
-      transparent 35%
+      circle at 92% 12%,
+      rgba(56, 189, 248, 0.1),
+      transparent 42%
     ),
     radial-gradient(
-      circle at 50% 100%,
-      rgba(244, 63, 94, 0.04),
-      transparent 45%
-    );
+      circle at 75% 88%,
+      rgba(56, 189, 248, 0.08),
+      transparent 42%
+    ),
+    radial-gradient(circle at 18% 90%, rgba(37, 99, 235, 0.06), transparent 42%);
 
-  --scrollbar-thumb: rgba(15, 23, 42, 0.18);
-  --scrollbar-thumb-hover: rgba(15, 23, 42, 0.32);
+  --scrollbar-thumb: rgba(15, 28, 46, 0.18);
+  --scrollbar-thumb-hover: rgba(15, 28, 46, 0.32);
 
-  /* Sidebar: clean white panel with strong borders */
-  --sidebar-bg: rgba(248, 250, 253, 0.96);
-  --sidebar-border: rgba(15, 23, 42, 0.1);
+  /* Sidebar: clean white panel with slate borders */
+  --sidebar-bg: #ffffff;
+  --sidebar-border: rgba(15, 28, 46, 0.08);
 
-  /* Light mode: cards lift via real drop shadows + colored glow on hover */
+  /* Card lift: real shadows + Signal-Blue glow on hover */
   --card-shadow:
-    0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
+    0 1px 3px rgba(15, 28, 46, 0.04), 0 4px 16px rgba(15, 28, 46, 0.06);
   --card-shadow-hover:
-    0 4px 12px rgba(15, 23, 42, 0.06), 0 12px 32px rgba(0, 179, 161, 0.14);
-  --card-shadow-strong: 0 12px 48px rgba(15, 23, 42, 0.14);
+    0 4px 12px rgba(15, 28, 46, 0.06), 0 12px 32px rgba(37, 99, 235, 0.14);
+  --card-shadow-strong: 0 12px 48px rgba(15, 28, 46, 0.14);
 
-  /* Glow accents stronger in light mode to remain visible against white */
-  --glow-accent: rgba(0, 179, 161, 0.55);
-  --glow-accent-soft: rgba(0, 179, 161, 0.28);
-  --glow-on-card: rgba(0, 179, 161, 0.32);
-  --shimmer-band: rgba(0, 179, 161, 0.22);
+  --glow-accent: rgba(37, 99, 235, 0.5);
+  --glow-accent-soft: rgba(37, 99, 235, 0.24);
+  --glow-on-card: rgba(37, 99, 235, 0.28);
+  --shimmer-band: rgba(37, 99, 235, 0.2);
 
-  /* Branded cyan→teal gradient navbar in light mode */
-  --navbar-bg: linear-gradient(135deg, rgb(0, 229, 204), rgb(0, 179, 161));
-  --navbar-border: rgba(0, 134, 121, 0.35);
-  --navbar-button-bg: rgba(255, 255, 255, 0.12);
-  --navbar-button-bg-hover: rgba(255, 255, 255, 0.22);
+  /* Navbar: clean white surface with Signal-Blue hover accent */
+  --navbar-bg: #ffffff;
+  --navbar-border: rgba(15, 28, 46, 0.08);
+  --navbar-button-bg: rgba(15, 28, 46, 0.04);
+  --navbar-button-bg-hover: rgba(37, 99, 235, 0.1); /* Signal Blue tint */
   --navbar-popover-bg: #ffffff;
   --navbar-dot-ring: #ffffff;
-  /* Text/icons sit on saturated cyan — must be white */
-  --navbar-text-strong: #ffffff;
-  --navbar-text-dim: rgba(255, 255, 255, 0.78);
-  --navbar-text-accent: #ffffff;
+  --navbar-text-strong: #0f1c2e; /* Abyss text on white reads dark, professional */
+  --navbar-text-dim: #64748b;
+  --navbar-text-accent: #2563eb; /* Signal Blue */
 
-  /* Engine terminal — brand cyan→teal gradient with dark high-contrast text */
-  --terminal-bg: linear-gradient(135deg, rgb(0, 229, 204), rgb(0, 179, 161));
-  --terminal-titlebar-bg: linear-gradient(
-    135deg,
-    rgba(31, 243, 223, 0.92),
-    rgba(0, 161, 145, 0.92)
-  );
-  --terminal-titlebar-border: rgba(4, 17, 14, 0.2);
-  --terminal-title-text: rgba(4, 17, 14, 0.85);
+  /* Engine terminal — keep dark for matrix/log aesthetic */
+  --terminal-bg: #0f1c2e;
+  --terminal-titlebar-bg: #1e3a5f;
+  --terminal-titlebar-border: rgba(255, 255, 255, 0.08);
+  --terminal-title-text: rgba(255, 255, 255, 0.85);
   --terminal-frame-ring:
-    0 0 0 1px rgba(4, 17, 14, 0.1) inset,
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   --terminal-outer-shadow:
-    0 6px 22px rgba(15, 23, 42, 0.15), 0 20px 56px rgba(0, 229, 204, 0.35);
-  --terminal-scanline: rgba(4, 17, 14, 0.08);
-  /* Log-level colors — dark/saturated so they pop on bright cyan */
-  --terminal-cmd: #04110e;
-  --terminal-success: #003d20;
-  --terminal-error: #7a0a1f;
-  --terminal-warning: #7a2e0a;
-  --terminal-info: #0f172a;
-  --terminal-prompt-bg: rgba(4, 17, 14, 0.75);
-  --terminal-prompt-dim: rgba(4, 17, 14, 0.55);
+    0 6px 22px rgba(15, 28, 46, 0.18), 0 20px 56px rgba(37, 99, 235, 0.22);
+  --terminal-scanline: rgba(56, 189, 248, 0.08);
+  --terminal-cmd: #38bdf8;
+  --terminal-success: #4ade80;
+  --terminal-error: #f87171;
+  --terminal-warning: #fb923c;
+  --terminal-info: #e2e8f0;
+  --terminal-prompt-bg: rgba(255, 255, 255, 0.1);
+  --terminal-prompt-dim: rgba(255, 255, 255, 0.55);
 
-  /* Shadcn HSL — light mode */
-  --background: 0 0% 98%;
-  --foreground: 222 47% 11%;
+  /* Shadcn HSL — Signal-Blue primary, Sky-Pulse secondary */
+  --background: 215 47% 96%; /* #F0F4FA Frost */
+  --foreground: 217 33% 17%; /* #1E293B */
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  --card-foreground: 217 33% 17%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --primary: 174 100% 35%;
+  --popover-foreground: 217 33% 17%;
+  --primary: 221 83% 53%; /* #2563EB Signal */
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 20% 94%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 210 20% 94%;
+  --secondary: 199 94% 60%; /* #38BDF8 Sky Pulse */
+  --secondary-foreground: 217 65% 12%;
+  --muted: 210 40% 96%;
   --muted-foreground: 215 16% 47%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --border: 220 13% 88%;
-  --input: 220 13% 88%;
-  --ring: 174 100% 35%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 221 83% 53%;
 }
 
 /* ... Reset and Layout ... */
@@ -732,17 +743,27 @@ select option {
 .badge-low {
   background: var(--low-dim);
   color: var(--low);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(34, 197, 94, 0.22);
 }
 .badge-low::before {
   background: var(--low);
   box-shadow: 0 0 8px var(--low);
 }
 
+.badge-safe {
+  background: var(--safe-dim);
+  color: var(--safe);
+  border: 1px solid rgba(34, 197, 94, 0.22);
+}
+.badge-safe::before {
+  background: var(--safe);
+  box-shadow: 0 0 8px var(--safe);
+}
+
 .badge-info {
   background: var(--info-dim);
   color: var(--info);
-  border: 1px solid rgba(14, 165, 233, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.28);
 }
 .badge-info::before {
   background: var(--info);
@@ -770,31 +791,32 @@ select option {
 
 /* Status */
 .badge-done {
-  background: var(--low-dim);
-  color: var(--low);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: var(--safe-dim);
+  color: var(--safe);
+  border: 1px solid rgba(34, 197, 94, 0.22);
 }
 .badge-done::before {
-  background: var(--low);
+  background: var(--safe);
 }
 
 .badge-running {
-  background: rgba(59, 130, 246, 0.1);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: var(--brand-sky-dim);
+  color: var(--brand-sky);
+  border: 1px solid rgba(56, 189, 248, 0.28);
 }
 .badge-running::before {
-  background: #60a5fa;
+  background: var(--brand-sky);
+  box-shadow: 0 0 8px var(--brand-sky);
   animation: pulse-soft 1s infinite;
 }
 
 .badge-online {
-  background: var(--low-dim);
-  color: var(--low);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: var(--safe-dim);
+  color: var(--safe);
+  border: 1px solid rgba(34, 197, 94, 0.22);
 }
 .badge-online::before {
-  background: var(--low);
+  background: var(--safe);
 }
 
 .badge-offline {
@@ -931,13 +953,62 @@ select option {
   position: relative;
 }
 .status-dot.online {
-  background: var(--low);
-  box-shadow: 0 0 8px var(--low);
+  background: var(--safe);
+  box-shadow: 0 0 8px var(--safe);
 }
 .status-dot.offline {
   background: var(--text-muted);
 }
 .status-dot.scanning {
-  background: #60a5fa;
+  background: var(--brand-sky, #60a5fa);
+  box-shadow: 0 0 8px var(--brand-sky, #60a5fa);
   animation: pulse-soft 1s infinite;
+}
+
+/* ─── Severity row/card tints ───
+   Opaque pastel backgrounds for severity-coded table rows and cards.
+   Reserve full-saturation severity color for badges & icons; use these
+   tints for row/card surfaces so the table reads as a soft heatmap. */
+.severity-row-critical,
+.row-critical {
+  background-color: var(--critical-tint);
+}
+.severity-row-high,
+.row-high {
+  background-color: var(--high-tint);
+}
+.severity-row-medium,
+.row-medium {
+  background-color: var(--medium-tint);
+}
+.severity-row-low,
+.row-low,
+.severity-row-safe,
+.row-safe {
+  background-color: var(--low-tint);
+}
+.severity-row-info,
+.row-info,
+.severity-row-none,
+.row-none {
+  background-color: var(--info-tint);
+}
+
+/* Severity left-border accent — pair with a tint row for stronger ranking */
+.severity-bar-critical {
+  border-left: 3px solid var(--critical);
+}
+.severity-bar-high {
+  border-left: 3px solid var(--high);
+}
+.severity-bar-medium {
+  border-left: 3px solid var(--medium);
+}
+.severity-bar-low,
+.severity-bar-safe {
+  border-left: 3px solid var(--low);
+}
+.severity-bar-info,
+.severity-bar-none {
+  border-left: 3px solid var(--info);
 }

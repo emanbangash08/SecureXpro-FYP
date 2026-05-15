@@ -1,5 +1,5 @@
-﻿"use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+"use client";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { api, type DashboardStats } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth-context";
@@ -14,16 +14,31 @@ import {
   ChevronRight,
   Globe,
   Wifi,
-  TrendingUp,
-  TrendingDown,
-  Zap,
   ArrowUpRight,
   Shield,
   AlertCircle,
   RefreshCw,
   Target,
   User,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from "lucide-react";
+
+/* ─────────────────────────────────────────────────────────────
+   Severity palette — sourced from CSS tokens (see app/globals.css)
+   ──────────────────────────────────────────────────────────── */
+const SEV = {
+  critical: "var(--critical)",
+  high: "var(--high)",
+  medium: "var(--medium)",
+  low: "var(--low)",
+  info: "var(--info)",
+} as const;
+
+const ACCENT = "var(--accent)";
+const SKY = "var(--brand-sky)";
+const SAFE = "var(--safe)";
 
 /* ── animated counter ── */
 function useCounter(target: number, delay = 0) {
@@ -34,11 +49,11 @@ function useCounter(target: number, delay = 0) {
     const from = prev.current;
     prev.current = target;
     const t = setTimeout(() => {
-      const frames = 45;
+      const frames = 40;
       let frame = 0;
       const id = setInterval(() => {
         frame++;
-        const progress = 1 - Math.pow(1 - frame / frames, 3); // ease-out-cubic
+        const progress = 1 - Math.pow(1 - frame / frames, 3);
         setVal(Math.round(from + (target - from) * progress));
         if (frame >= frames) {
           setVal(target);
@@ -52,7 +67,7 @@ function useCounter(target: number, delay = 0) {
   return val;
 }
 
-/* ── skeleton pulse ── */
+/* ── skeleton ── */
 function Skeleton({
   w = "100%",
   h = 18,
@@ -68,93 +83,316 @@ function Skeleton({
         width: w,
         height: h,
         borderRadius: r,
-        background: "var(--border-default)",
+        background: "var(--surface-3)",
         animation: "skeleton-pulse 1.4s ease-in-out infinite",
       }}
     />
   );
 }
 
-/* ── stat card ── */
+/* ── Security Posture Ring — circular gauge for hero ── */
+function PostureRing({
+  score,
+  loading,
+  size = 132,
+}: {
+  score: number;
+  loading: boolean;
+  size?: number;
+}) {
+  const animated = useCounter(score, 200);
+  const stroke = Math.max(5, Math.round(size * 0.06));
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const numSize = Math.round(size * 0.32);
+  const labelSize = Math.max(8, Math.round(size * 0.075));
+
+  const grade =
+    score >= 85
+      ? { label: "Excellent", color: "var(--safe)" }
+      : score >= 65
+        ? { label: "Good", color: "var(--brand-sky)" }
+        : score >= 40
+          ? { label: "Fair", color: "var(--medium)" }
+          : { label: "At Risk", color: "var(--critical)" };
+
+  const dash = c * (animated / 100);
+
+  const haloR = r + stroke + 3;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: size,
+        height: size,
+        flexShrink: 0,
+      }}
+    >
+      {/* Outer rotating dashed halo */}
+      <svg
+        width={size + 12}
+        height={size + 12}
+        style={{
+          position: "absolute",
+          top: -6,
+          left: -6,
+          animation: "halo-spin 32s linear infinite",
+          opacity: 0.55,
+        }}
+      >
+        <circle
+          cx={(size + 12) / 2}
+          cy={(size + 12) / 2}
+          r={haloR}
+          fill="none"
+          stroke={grade.color}
+          strokeOpacity="0.35"
+          strokeWidth="0.8"
+          strokeDasharray="2 6"
+        />
+      </svg>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <defs>
+          <linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={grade.color} stopOpacity="1" />
+            <stop offset="100%" stopColor={grade.color} stopOpacity="0.55" />
+          </linearGradient>
+        </defs>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="var(--surface-3)"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="url(#ring-grad)"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c - dash}
+          style={{
+            transition: "stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)",
+            filter: `drop-shadow(0 0 8px ${grade.color}88)`,
+          }}
+        />
+      </svg>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 2,
+        }}
+      >
+        {loading ? (
+          <Skeleton w={48} h={28} />
+        ) : (
+          <>
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: numSize,
+                fontWeight: 700,
+                lineHeight: 1,
+                letterSpacing: "-1.2px",
+                background: `linear-gradient(180deg, var(--text-strong) 0%, ${grade.color} 140%)`,
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              {animated}
+            </div>
+            <div
+              style={{
+                fontSize: labelSize,
+                fontFamily: "var(--font-mono)",
+                color: grade.color,
+                textTransform: "uppercase",
+                letterSpacing: "1.4px",
+                fontWeight: 700,
+                marginTop: 2,
+              }}
+            >
+              {grade.label}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Sparkline — tiny inline trend visual for stat cards ── */
+function Sparkline({
+  values,
+  color,
+  width = 64,
+  height = 22,
+}: {
+  values: number[];
+  color: string;
+  width?: number;
+  height?: number;
+}) {
+  if (!values.length) return null;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const step = width / Math.max(values.length - 1, 1);
+  const pts = values
+    .map((v, i) => `${i * step},${height - ((v - min) / range) * height}`)
+    .join(" ");
+
+  return (
+    <svg width={width} height={height} style={{ overflow: "visible" }}>
+      <polyline
+        points={pts}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.9"
+      />
+      <circle
+        cx={(values.length - 1) * step}
+        cy={height - ((values[values.length - 1] - min) / range) * height}
+        r="2"
+        fill={color}
+      />
+    </svg>
+  );
+}
+
+/* ── stat card — refined with accent stripe + sparkline ── */
 function StatCard({
   label,
   value,
   icon: Icon,
-  accent,
-  badge,
-  trend,
+  tone,
+  hint,
   delay = 0,
   loading,
+  trend,
+  delta,
 }: {
   label: string;
   value: number;
   icon: any;
-  accent: string;
-  badge?: string;
-  trend?: number;
+  tone: string;
+  hint?: string;
   delay?: number;
   loading?: boolean;
+  trend?: number[];
+  delta?: number | null;
 }) {
   const count = useCounter(value, delay);
-  const isHot = badge !== undefined && value > 0;
+  const DeltaIcon =
+    delta == null || delta === 0
+      ? Minus
+      : delta > 0
+        ? TrendingUp
+        : TrendingDown;
+  const deltaColor =
+    delta == null || delta === 0
+      ? "var(--text-quietest)"
+      : delta > 0
+        ? "var(--critical)"
+        : "var(--safe)";
+
   return (
     <div
-      style={{
-        background: "var(--surface-1)",
-        borderRadius: 18,
-        padding: "26px 24px 24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 20,
-        position: "relative",
-        overflow: "hidden",
-        transition: "all .28s cubic-bezier(0.16,1,0.3,1)",
-        cursor: "default",
-        minHeight: 168,
-        border: isHot
-          ? `1px solid ${accent}40`
-          : "1px solid var(--border-default)",
-        boxShadow: isHot ? `0 0 28px ${accent}15` : "var(--card-shadow)",
-        animation: `card-enter .45s cubic-bezier(0.16,1,0.3,1) ${delay}ms both`,
-      }}
+      className="stat-card-fancy"
+      style={
+        {
+          background:
+            "linear-gradient(180deg, var(--surface-1), color-mix(in srgb, var(--surface-1) 60%, transparent))",
+          border: "1px solid var(--border-default)",
+          borderRadius: 16,
+          padding: "20px 22px 18px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+          position: "relative",
+          overflow: "hidden",
+          transition: "transform .3s, box-shadow .3s, border-color .3s",
+          boxShadow: "var(--card-shadow)",
+          animation: `card-enter .55s cubic-bezier(0.16,1,0.3,1) ${delay}ms both`,
+          minHeight: 148,
+          ["--tone" as any]: tone,
+        } as React.CSSProperties
+      }
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-3px)";
-        e.currentTarget.style.boxShadow = `0 8px 32px ${accent}20`;
+        e.currentTarget.style.boxShadow = `0 12px 32px color-mix(in srgb, ${tone} 18%, transparent)`;
+        e.currentTarget.style.borderColor = `color-mix(in srgb, ${tone} 35%, var(--border-default))`;
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = "translateY(0)";
-        e.currentTarget.style.boxShadow = isHot
-          ? `0 0 28px ${accent}15`
-          : "none";
+        e.currentTarget.style.boxShadow = "var(--card-shadow)";
+        e.currentTarget.style.borderColor = "var(--border-default)";
       }}
     >
-      {/* top accent line */}
-      {isHot && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 2,
-            background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
-            animation: "shimmer 2.5s ease-in-out infinite",
-          }}
-        />
-      )}
-      {/* bg glow */}
+      {/* Top accent stripe */}
       <div
         style={{
           position: "absolute",
-          top: -30,
-          right: -30,
-          width: 100,
-          height: 100,
-          borderRadius: "50%",
-          background: `radial-gradient(circle, ${accent}18, transparent 65%)`,
-          pointerEvents: "none",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 2,
+          background: `linear-gradient(90deg, transparent, ${tone}, transparent)`,
+          opacity: 0.75,
         }}
       />
+      {/* Soft tone-tinted glow blob, bottom-right */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          right: -40,
+          bottom: -40,
+          width: 120,
+          height: 120,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, color-mix(in srgb, ${tone} 18%, transparent), transparent 70%)`,
+          pointerEvents: "none",
+          opacity: 0.6,
+        }}
+      />
+      {/* Corner bracket — bottom-left decoration */}
+      <svg
+        aria-hidden
+        width="14"
+        height="14"
+        viewBox="0 0 14 14"
+        style={{
+          position: "absolute",
+          bottom: 10,
+          left: 10,
+          opacity: 0.35,
+          pointerEvents: "none",
+        }}
+      >
+        <path
+          d="M 0 4 L 0 14 L 10 14"
+          fill="none"
+          stroke={tone}
+          strokeWidth="1.2"
+          strokeLinecap="round"
+        />
+      </svg>
 
       <div
         style={{
@@ -165,90 +403,99 @@ function StatCard({
       >
         <div
           style={{
-            width: 48,
-            height: 48,
-            borderRadius: 13,
-            background: `${accent}14`,
-            border: `1px solid ${accent}30`,
+            width: 38,
+            height: 38,
+            borderRadius: 10,
+            background: `color-mix(in srgb, ${tone} 10%, transparent)`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            boxShadow: isHot ? `0 0 20px ${accent}30` : `0 0 0 1px ${accent}08`,
           }}
         >
-          <Icon size={22} color={accent} strokeWidth={1.8} />
+          <Icon size={18} color={tone} strokeWidth={2} />
         </div>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: 4,
-          }}
-        >
-          {badge && (
+        {hint ? (
+          <span
+            style={{
+              fontSize: 9.5,
+              fontFamily: "var(--font-mono)",
+              letterSpacing: "0.6px",
+              textTransform: "uppercase",
+              padding: "3px 9px",
+              borderRadius: 999,
+              background: `color-mix(in srgb, ${tone} 10%, transparent)`,
+              color: tone,
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
             <span
               style={{
-                fontSize: 9,
-                fontFamily: "var(--font-mono)",
-                letterSpacing: "0.5px",
-                textTransform: "uppercase",
-                padding: "3px 8px",
-                borderRadius: 20,
-                background: `${accent}15`,
-                color: accent,
-                border: `1px solid ${accent}30`,
-                animation: isHot
-                  ? "badge-pulse 2s ease-in-out infinite"
-                  : "none",
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                background: tone,
+                animation: "pulse-soft 1.6s infinite",
               }}
-            >
-              {badge}
-            </span>
-          )}
-          {trend !== undefined && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                fontSize: 10,
-                fontFamily: "var(--font-mono)",
-                color: trend >= 0 ? "#ff3355" : "#00cc88",
-              }}
-            >
-              {trend >= 0 ? (
-                <TrendingUp size={10} />
-              ) : (
-                <TrendingDown size={10} />
-              )}{" "}
-              {Math.abs(trend)}%
-            </div>
-          )}
-        </div>
+            />
+            {hint}
+          </span>
+        ) : trend && trend.length > 1 ? (
+          <Sparkline values={trend} color={tone} />
+        ) : null}
       </div>
+
       <div>
         {loading ? (
           <Skeleton h={36} r={6} />
         ) : (
           <div
             style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 44,
-              fontWeight: 800,
-              color: value > 0 ? accent : "var(--text-strong)",
-              lineHeight: 1,
-              letterSpacing: "-1.4px",
-              transition: "color .4s",
-              textShadow: isHot ? `0 0 24px ${accent}30` : "none",
+              display: "flex",
+              alignItems: "baseline",
+              gap: 8,
+              flexWrap: "wrap",
             }}
           >
-            {count.toLocaleString()}
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: 38,
+                fontWeight: 700,
+                lineHeight: 1,
+                letterSpacing: "-1.2px",
+                background:
+                  "linear-gradient(180deg, var(--text-strong) 0%, var(--text-dim) 130%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              {count.toLocaleString()}
+            </div>
+            {delta != null && (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  fontSize: 10.5,
+                  fontFamily: "var(--font-mono)",
+                  color: deltaColor,
+                  fontWeight: 600,
+                }}
+              >
+                <DeltaIcon size={11} />
+                {delta === 0 ? "0" : `${delta > 0 ? "+" : ""}${delta}`}
+              </span>
+            )}
           </div>
         )}
         <div
           style={{
-            marginTop: 10,
+            marginTop: 8,
             fontSize: 11,
             color: "var(--text-fainter)",
             fontFamily: "var(--font-mono)",
@@ -264,84 +511,148 @@ function StatCard({
   );
 }
 
-/* ── severity bar ── */
-function SeverityBar({
+/* ── Stacked composition bar — single bar showing severity mix ── */
+function CompositionBar({
+  segments,
+  total,
+}: {
+  segments: Array<{ label: string; value: number; color: string }>;
+  total: number;
+}) {
+  const [drawn, setDrawn] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setDrawn(true), 250);
+    return () => clearTimeout(t);
+  }, []);
+
+  if (total === 0) {
+    return (
+      <div
+        style={{
+          height: 8,
+          borderRadius: 999,
+          background: "var(--surface-3)",
+          width: "100%",
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      style={{
+        height: 8,
+        borderRadius: 999,
+        background: "var(--surface-3)",
+        overflow: "hidden",
+        display: "flex",
+        gap: 2,
+        width: "100%",
+      }}
+    >
+      {segments.map((s, i) => {
+        const pct = (s.value / total) * 100;
+        if (pct === 0) return null;
+        return (
+          <div
+            key={s.label}
+            style={{
+              width: drawn ? `${pct}%` : "0%",
+              background: s.color,
+              borderRadius: 999,
+              transition: `width 1s cubic-bezier(0.16,1,0.3,1) ${i * 80}ms`,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── severity row — compact list item with dot ── */
+function SeverityRow({
   label,
   value,
   color,
-  max,
+  total,
   delay = 0,
 }: {
   label: string;
   value: number;
   color: string;
-  max: number;
+  total: number;
   delay?: number;
 }) {
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const t = setTimeout(
-      () =>
-        setWidth(
-          Math.max(value > 0 ? 4 : 0, Math.round((value / (max || 1)) * 100)),
-        ),
-      delay + 200,
-    );
-    return () => clearTimeout(t);
-  }, [value, max, delay]);
+  const pct = total === 0 ? 0 : Math.round((value / total) * 100);
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <div
-        style={{
-          width: 56,
-          fontSize: 10,
-          color: "var(--text-fainter)",
-          fontFamily: "var(--font-mono)",
-          textTransform: "uppercase",
-          letterSpacing: "0.8px",
-          flexShrink: 0,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          flex: 1,
-          height: 6,
-          background: "var(--surface-3)",
-          borderRadius: 6,
-          overflow: "hidden",
-        }}
-      >
-        <div
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "9px 0",
+        borderBottom: "1px solid var(--border-subtle)",
+        animation: `slide-in .35s cubic-bezier(0.16,1,0.3,1) ${delay}ms both`,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span
           style={{
-            width: `${width}%`,
-            height: "100%",
-            background: `linear-gradient(90deg, ${color}, ${color}cc)`,
-            borderRadius: 6,
-            boxShadow: value > 0 ? `0 0 10px ${color}55` : "none",
-            transition: "width 1.1s cubic-bezier(0.16,1,0.3,1)",
+            width: 8,
+            height: 8,
+            borderRadius: 2,
+            background: color,
+            boxShadow: `0 0 8px ${color}55`,
           }}
         />
+        <span
+          style={{
+            fontSize: 11.5,
+            fontFamily: "var(--font-display)",
+            fontWeight: 600,
+            color: "var(--text-soft)",
+          }}
+        >
+          {label}
+        </span>
       </div>
       <div
         style={{
-          width: 28,
-          textAlign: "right",
-          fontSize: 13,
-          fontFamily: "var(--font-display)",
-          fontWeight: 700,
-          color: value > 0 ? color : "var(--text-quietest)",
-          transition: "color .4s",
+          display: "flex",
+          alignItems: "baseline",
+          gap: 10,
         }}
       >
-        {value}
+        <span
+          style={{
+            fontSize: 10,
+            fontFamily: "var(--font-mono)",
+            color: "var(--text-quietest)",
+            minWidth: 30,
+            textAlign: "right",
+          }}
+        >
+          {pct}%
+        </span>
+        <span
+          style={{
+            fontSize: 15,
+            fontFamily: "var(--font-display)",
+            fontWeight: 700,
+            color: value > 0 ? color : "var(--text-quietest)",
+            minWidth: 24,
+            textAlign: "right",
+            transition: "color .3s",
+          }}
+        >
+          {value}
+        </span>
       </div>
     </div>
   );
 }
 
-/* ── trend graph: 3 separate severity curves, axis labels, end chips ── */
+/* ── trend graph — minimal, spec palette ── */
 function TrendGraph({
   data,
   loading,
@@ -364,7 +675,7 @@ function TrendGraph({
 
   const h = 200,
     w = 720,
-    padL = 32,
+    padL = 36,
     padR = 56,
     padT = 14,
     padB = 26;
@@ -408,9 +719,9 @@ function TrendGraph({
     gradId: string;
     delay: number;
   }> = [
-    { key: "medium", color: "#ffcc00", gradId: "g-med", delay: 0.1 },
-    { key: "high", color: "#ff6b35", gradId: "g-high", delay: 0.2 },
-    { key: "critical", color: "#ff3355", gradId: "g-crit", delay: 0.3 },
+    { key: "medium", color: "#EAB308", gradId: "g-med", delay: 0.1 },
+    { key: "high", color: "#F97316", gradId: "g-high", delay: 0.2 },
+    { key: "critical", color: "#EF4444", gradId: "g-crit", delay: 0.3 },
   ];
 
   return (
@@ -430,17 +741,14 @@ function TrendGraph({
             style={{
               fontSize: 12,
               fontFamily: "var(--font-mono)",
-              color: "var(--text-quietest)",
+              color: "var(--text-fainter)",
               textAlign: "center",
-              padding: "10px 18px",
+              padding: "12px 20px",
               borderRadius: 10,
               background: "var(--surface-2)",
               border: "1px dashed var(--border-default)",
             }}
           >
-            <div style={{ fontSize: 22, marginBottom: 4, lineHeight: 1 }}>
-              —
-            </div>
             Run your first scan to populate the trend
           </div>
         </div>
@@ -452,33 +760,25 @@ function TrendGraph({
           width: "100%",
           height: h,
           overflow: "visible",
-          opacity: hasData ? 1 : 0.2,
+          opacity: hasData ? 1 : 0.25,
           transition: "opacity .5s",
         }}
       >
         <defs>
           <linearGradient id="g-med" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ffcc00" stopOpacity="0.28" />
-            <stop offset="100%" stopColor="#ffcc00" stopOpacity="0" />
+            <stop offset="0%" stopColor="#EAB308" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#EAB308" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="g-high" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ff6b35" stopOpacity="0.32" />
-            <stop offset="100%" stopColor="#ff6b35" stopOpacity="0" />
+            <stop offset="0%" stopColor="#F97316" stopOpacity="0.26" />
+            <stop offset="100%" stopColor="#F97316" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="g-crit" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ff3355" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#ff3355" stopOpacity="0" />
+            <stop offset="0%" stopColor="#EF4444" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="#EF4444" stopOpacity="0" />
           </linearGradient>
-          <filter id="glow-crit" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="3.5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
 
-        {/* Horizontal grid + Y-axis labels (0, 25%, 50%, 75%, 100%) */}
         {[0, 0.25, 0.5, 0.75, 1].map((pct) => {
           const y = padT + innerH * (1 - pct);
           const value = Math.round(niceMax * pct);
@@ -494,10 +794,10 @@ function TrendGraph({
                 strokeWidth={pct === 0 ? 1 : 0.8}
               />
               <text
-                x={padL - 8}
+                x={padL - 10}
                 y={y + 3}
                 textAnchor="end"
-                fontSize="9"
+                fontSize="9.5"
                 fontFamily="var(--font-mono)"
                 fill="var(--text-quietest)"
                 style={{ letterSpacing: "0.5px" }}
@@ -508,21 +808,6 @@ function TrendGraph({
           );
         })}
 
-        {/* Vertical month gridlines (subtle) */}
-        {data.map((_, i) => (
-          <line
-            key={`v-${i}`}
-            x1={xAt(i)}
-            y1={padT}
-            x2={xAt(i)}
-            y2={padT + innerH}
-            stroke="var(--border-subtle)"
-            strokeWidth="0.6"
-            strokeDasharray="2 8"
-          />
-        ))}
-
-        {/* Filled areas */}
         {series.map((s) => (
           <path
             key={`area-${s.key}`}
@@ -533,17 +818,15 @@ function TrendGraph({
           />
         ))}
 
-        {/* Stroke lines */}
         {series.map((s) => (
           <path
             key={`line-${s.key}`}
             d={getSmoothPath(s.key)}
             fill="none"
             stroke={s.color}
-            strokeWidth={s.key === "critical" ? 2.6 : 1.8}
+            strokeWidth={s.key === "critical" ? 2.4 : 1.7}
             strokeLinecap="round"
             strokeLinejoin="round"
-            filter={s.key === "critical" ? "url(#glow-crit)" : undefined}
             pathLength={1}
             strokeDasharray="1"
             strokeDashoffset={drawn ? 0 : 1}
@@ -553,7 +836,6 @@ function TrendGraph({
           />
         ))}
 
-        {/* Data point dots — critical line only (most important) */}
         {data.map((d, i) => {
           const x = xAt(i);
           const y = yAt(d.critical);
@@ -562,19 +844,19 @@ function TrendGraph({
             <g
               key={`pt-${i}`}
               opacity={drawn ? 1 : 0}
-              style={{ transition: `opacity .4s ${0.4 + i * 0.06}s` }}
+              style={{ transition: `opacity .4s ${0.4 + i * 0.05}s` }}
               onMouseEnter={() => setHoverIdx(i)}
               onMouseLeave={() => setHoverIdx(null)}
             >
               {isHover && (
-                <circle cx={x} cy={y} r="14" fill="rgba(255,51,85,0.16)" />
+                <circle cx={x} cy={y} r="13" fill="rgba(239,68,68,0.15)" />
               )}
               <circle
                 cx={x}
                 cy={y}
-                r={isHover ? 6 : 4.5}
+                r={isHover ? 5.5 : 4}
                 fill="var(--surface-1)"
-                stroke="#ff3355"
+                stroke="#EF4444"
                 strokeWidth="2"
                 style={{ transition: "r .18s" }}
               />
@@ -582,7 +864,6 @@ function TrendGraph({
           );
         })}
 
-        {/* End-of-line value chips */}
         {hasData &&
           series.map((s) => {
             const v = data[lastIdx][s.key];
@@ -594,20 +875,10 @@ function TrendGraph({
                 opacity={drawn ? 1 : 0}
                 style={{ transition: `opacity .5s ${0.6 + s.delay}s` }}
               >
-                <line
-                  x1={x + 6}
-                  y1={y}
-                  x2={x + 18}
-                  y2={y}
-                  stroke={s.color}
-                  strokeWidth="1"
-                  strokeDasharray="2 3"
-                  opacity="0.5"
-                />
                 <rect
-                  x={x + 22}
+                  x={x + 12}
                   y={y - 9}
-                  width="28"
+                  width="32"
                   height="18"
                   rx="9"
                   fill="var(--surface-1)"
@@ -616,7 +887,7 @@ function TrendGraph({
                   strokeWidth="1"
                 />
                 <text
-                  x={x + 36}
+                  x={x + 28}
                   y={y + 4}
                   textAnchor="middle"
                   fontSize="10"
@@ -630,20 +901,18 @@ function TrendGraph({
             );
           })}
 
-        {/* Hover vertical guide line */}
         {hoverIdx !== null && (
           <line
             x1={xAt(hoverIdx)}
             y1={padT}
             x2={xAt(hoverIdx)}
             y2={padT + innerH}
-            stroke="rgba(255,51,85,0.35)"
+            stroke="rgba(239,68,68,0.3)"
             strokeWidth="1"
             strokeDasharray="3 4"
           />
         )}
 
-        {/* Month labels */}
         {data.map((d, i) => (
           <text
             key={`m-${i}`}
@@ -665,7 +934,6 @@ function TrendGraph({
         ))}
       </svg>
 
-      {/* Hover tooltip */}
       {hoverIdx !== null && hasData && (
         <div
           style={{
@@ -675,14 +943,14 @@ function TrendGraph({
             display: "flex",
             flexDirection: "column",
             gap: 4,
-            padding: "10px 12px",
-            borderRadius: 9,
+            padding: "10px 13px",
+            borderRadius: 10,
             background: "var(--surface-1)",
             border: "1px solid var(--border-default)",
             boxShadow: "var(--card-shadow-strong)",
             fontFamily: "var(--font-mono)",
             fontSize: 11,
-            minWidth: 130,
+            minWidth: 140,
             pointerEvents: "none",
             animation: "fade-in .15s ease",
           }}
@@ -723,7 +991,6 @@ function TrendGraph({
                     height: 7,
                     borderRadius: "50%",
                     background: s.color,
-                    boxShadow: `0 0 6px ${s.color}`,
                   }}
                 />
                 {s.key}
@@ -739,30 +1006,30 @@ function TrendGraph({
   );
 }
 
-/* ── status badge ── */
+/* ── status badge for scan rows ── */
 function StatusBadge({ status }: { status: string }) {
-  const cfg: Record<string, { bg: string; dot?: boolean }> = {
-    completed: { bg: "#00cc88" },
-    running: { bg: "#00e5cc", dot: true },
-    pending: { bg: "#ffcc00" },
-    failed: { bg: "#ff3355" },
+  const cfg: Record<string, { color: string; dot?: boolean }> = {
+    completed: { color: "var(--safe)" },
+    running: { color: "var(--brand-sky)", dot: true },
+    pending: { color: "var(--medium)" },
+    failed: { color: "var(--critical)" },
   };
   const s = cfg[status] ?? cfg.pending;
   return (
     <span
       style={{
-        fontSize: 9,
+        fontSize: 9.5,
         fontFamily: "var(--font-mono)",
         padding: "3px 10px",
-        borderRadius: 20,
-        background: `${s.bg}12`,
-        color: s.bg,
-        border: `1px solid ${s.bg}28`,
+        borderRadius: 999,
+        background: `color-mix(in srgb, ${s.color} 10%, transparent)`,
+        color: s.color,
         textTransform: "uppercase",
-        letterSpacing: "0.5px",
+        letterSpacing: "0.6px",
         display: "inline-flex",
         alignItems: "center",
-        gap: 5,
+        gap: 6,
+        fontWeight: 600,
       }}
     >
       <span
@@ -770,9 +1037,7 @@ function StatusBadge({ status }: { status: string }) {
           width: 5,
           height: 5,
           borderRadius: "50%",
-          background: s.bg,
-          display: "inline-block",
-          boxShadow: `0 0 6px ${s.bg}`,
+          background: s.color,
           animation: s.dot ? "pulse-soft 1.5s infinite" : "none",
         }}
       />
@@ -781,7 +1046,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-/* ── activity icon picker ── */
 function activityIcon(type: string, severity: string) {
   if (type.includes("completed")) return CheckCircle2;
   if (type.includes("failed")) return AlertCircle;
@@ -831,12 +1095,10 @@ export default function Dashboard() {
     }
   }, []);
 
-  // Initial load
   useEffect(() => {
     load();
   }, [load]);
 
-  // Auto-poll: 8s when scanning, 15s otherwise
   useEffect(() => {
     const interval = stats.scans.running > 0 ? 8_000 : 15_000;
     const id = setInterval(() => load(true), interval);
@@ -850,13 +1112,6 @@ export default function Dashboard() {
     (vulns.medium ?? 0) +
     (vulns.low ?? 0) +
     (vulns.info ?? 0);
-  const maxSev = Math.max(
-    vulns.critical ?? 0,
-    vulns.high ?? 0,
-    vulns.medium ?? 0,
-    vulns.low ?? 0,
-    1,
-  );
   const trends =
     stats.vulnerability_trends.length >= 2
       ? stats.vulnerability_trends
@@ -864,10 +1119,78 @@ export default function Dashboard() {
   const hasCritical = (vulns.critical ?? 0) > 0;
   const isScanning = stats.scans.running > 0;
 
+  /* Posture score: weighted severity penalty against a 100 baseline */
+  const postureScore = useMemo(() => {
+    const c = vulns.critical ?? 0;
+    const h = vulns.high ?? 0;
+    const m = vulns.medium ?? 0;
+    const l = vulns.low ?? 0;
+    const penalty = c * 12 + h * 6 + m * 2 + l * 0.5;
+    return Math.max(0, Math.min(100, Math.round(100 - penalty)));
+  }, [vulns]);
+
+  /* Sparkline data — derived from monthly trends, one per metric */
+  const sparks = useMemo(() => {
+    const tt = trends.length >= 2 ? trends : PLACEHOLDER_TRENDS;
+    return {
+      total: tt.map((t) => t.critical + t.high + t.medium + t.low),
+      critical: tt.map((t) => t.critical),
+      issues: tt.map((t) => t.critical + t.high + t.medium),
+    };
+  }, [trends]);
+
+  /* Deltas against prior month */
+  const deltas = useMemo(() => {
+    const t = trends;
+    if (t.length < 2) return { critical: null, total: null, issues: null };
+    const cur = t[t.length - 1];
+    const prev = t[t.length - 2];
+    return {
+      critical: (cur.critical ?? 0) - (prev.critical ?? 0),
+      total:
+        cur.critical +
+        cur.high +
+        cur.medium +
+        cur.low -
+        (prev.critical + prev.high + prev.medium + prev.low),
+      issues:
+        cur.critical +
+        cur.high +
+        cur.medium -
+        (prev.critical + prev.high + prev.medium),
+    };
+  }, [trends]);
+
+  const statusPill = hasCritical
+    ? {
+        label: "Critical threats detected",
+        color: "var(--critical)",
+        icon: AlertTriangle,
+      }
+    : isScanning
+      ? {
+          label: `${stats.scans.running} scan${stats.scans.running > 1 ? "s" : ""} running`,
+          color: "var(--brand-sky)",
+          icon: Activity,
+        }
+      : {
+          label: "All clear",
+          color: "var(--safe)",
+          icon: Shield,
+        };
+
+  const severitySegments = [
+    { label: "Critical", value: vulns.critical ?? 0, color: "#EF4444" },
+    { label: "High", value: vulns.high ?? 0, color: "#F97316" },
+    { label: "Medium", value: vulns.medium ?? 0, color: "#EAB308" },
+    { label: "Low", value: vulns.low ?? 0, color: "#22C55E" },
+    { label: "Info", value: vulns.info ?? 0, color: "#94A3B8" },
+  ];
+
   return (
     <div
       style={{
-        padding: "28px 32px",
+        padding: "32px 36px",
         maxWidth: 1480,
         margin: "0 auto",
         fontFamily: "var(--font-ui)",
@@ -883,20 +1206,24 @@ export default function Dashboard() {
             gap: 12,
             padding: "14px 18px",
             marginBottom: 20,
-            background: "rgba(255,51,85,0.08)",
-            border: "1px solid rgba(255,51,85,0.25)",
-            borderRadius: 10,
+            background: "var(--critical-dim)",
+            border: "1px solid rgba(239,68,68,0.25)",
+            borderRadius: 12,
             animation: "card-enter .3s ease both",
           }}
         >
-          <AlertCircle size={16} color="#ff3355" style={{ flexShrink: 0 }} />
+          <AlertCircle
+            size={16}
+            color="var(--critical)"
+            style={{ flexShrink: 0 }}
+          />
           <div style={{ flex: 1 }}>
             <span
               style={{
                 fontSize: 13,
                 fontFamily: "var(--font-display)",
                 fontWeight: 600,
-                color: "#ff3355",
+                color: "var(--critical)",
               }}
             >
               Failed to load dashboard:{" "}
@@ -905,7 +1232,7 @@ export default function Dashboard() {
               style={{
                 fontSize: 12,
                 fontFamily: "var(--font-mono)",
-                color: "#cc2244",
+                color: "var(--text-soft)",
               }}
             >
               {error}
@@ -916,11 +1243,11 @@ export default function Dashboard() {
             style={{
               fontSize: 11,
               fontFamily: "var(--font-mono)",
-              color: "#ff3355",
-              background: "rgba(255,51,85,0.1)",
-              border: "1px solid rgba(255,51,85,0.3)",
-              borderRadius: 6,
-              padding: "5px 10px",
+              color: "var(--critical)",
+              background: "var(--surface-1)",
+              border: "1px solid rgba(239,68,68,0.3)",
+              borderRadius: 8,
+              padding: "6px 12px",
               cursor: "pointer",
             }}
           >
@@ -929,203 +1256,167 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Header */}
-      <div
+      {/* ─── Hero: minimal command-bar with ring anchor ─── */}
+      <header
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 28,
-          animation: "card-enter .4s cubic-bezier(0.16,1,0.3,1) both",
+          position: "relative",
+          padding: "8px 4px 22px",
+          marginBottom: 22,
+          borderBottom: "1px solid transparent",
+          backgroundImage:
+            "linear-gradient(to right, transparent, var(--border-default) 18%, var(--border-default) 82%, transparent)",
+          backgroundSize: "100% 1px",
+          backgroundPosition: "bottom",
+          backgroundRepeat: "no-repeat",
+          animation: "card-enter .45s cubic-bezier(0.16,1,0.3,1) both",
         }}
       >
-        <div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 24,
+            flexWrap: "wrap",
+          }}
+        >
           <div
             style={{
               display: "flex",
+              gap: 18,
               alignItems: "center",
-              gap: 8,
-              marginBottom: 8,
+              minWidth: 0,
             }}
           >
+            <PostureRing score={postureScore} loading={loading} size={78} />
+            {/* Vertical hairline divider */}
             <div
+              aria-hidden
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "4px 11px",
-                borderRadius: 7,
-                background: hasCritical
-                  ? "rgba(255,51,85,0.1)"
-                  : "rgba(0,204,136,0.07)",
-                border: hasCritical
-                  ? "1px solid rgba(255,51,85,0.22)"
-                  : "1px solid rgba(0,204,136,0.18)",
-                animation: hasCritical
-                  ? "badge-pulse 2s ease-in-out infinite"
-                  : "none",
+                width: 1,
+                alignSelf: "stretch",
+                background:
+                  "linear-gradient(to bottom, transparent, var(--border-default) 22%, var(--border-default) 78%, transparent)",
               }}
-            >
-              <Zap size={11} color={hasCritical ? "#ff3355" : "#00cc88"} />
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 9,
-                  color: hasCritical ? "#ff3355" : "#00cc88",
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                }}
-              >
-                {hasCritical ? "Threat Level: Critical" : "All Clear"}
-              </span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "4px 11px",
-                borderRadius: 7,
-                background: "rgba(0,204,136,0.07)",
-                border: "1px solid rgba(0,204,136,0.18)",
-              }}
-            >
+            />
+            <div style={{ minWidth: 0 }}>
               <div
                 style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: "50%",
-                  background: "#00cc88",
-                  boxShadow: "0 0 8px #00cc88",
-                  animation: "pulse-soft 2s infinite",
-                }}
-              />
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 9,
-                  color: "#00cc88",
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                }}
-              >
-                All Systems Operational
-              </span>
-            </div>
-            {isScanning && (
-              <div
-                style={{
-                  display: "flex",
+                  display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
-                  padding: "4px 11px",
-                  borderRadius: 7,
-                  background: "rgba(0,229,204,0.08)",
-                  border: "1px solid rgba(0,229,204,0.25)",
-                  animation: "pulse-border 2s ease-in-out infinite",
+                  marginBottom: 8,
                 }}
               >
-                <Activity
-                  size={11}
-                  color="#00e5cc"
-                  style={{ animation: "spin 2s linear infinite" }}
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: statusPill.color,
+                    boxShadow: `0 0 8px ${statusPill.color}`,
+                    animation: "pulse-soft 1.8s infinite",
+                  }}
                 />
                 <span
                   style={{
                     fontFamily: "var(--font-mono)",
-                    fontSize: 9,
-                    color: "var(--accent-text)",
+                    fontSize: 10,
+                    color: statusPill.color,
                     textTransform: "uppercase",
-                    letterSpacing: "1px",
+                    letterSpacing: "1.4px",
+                    fontWeight: 600,
                   }}
                 >
-                  {stats.scans.running} Running
+                  {statusPill.label}
                 </span>
               </div>
-            )}
-          </div>
-          <h1
-            style={{
-              fontSize: 28,
-              fontWeight: 800,
-              fontFamily: "var(--font-display)",
-              letterSpacing: "-0.5px",
-              color: "var(--text-strong)",
-              marginBottom: 5,
-            }}
-          >
-            Security Operations Dashboard
-          </h1>
-          <p
-            style={{
-              fontSize: 12,
-              color: "var(--text-faintest)",
-              fontFamily: "var(--font-mono)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            Real-time threat monitoring · {stats.scans.total} assessments
-            {lastUpdate && (
-              <span style={{ color: "var(--text-quietest)" }}>
-                · updated{" "}
-                <span suppressHydrationWarning>
-                  {lastUpdate.toLocaleTimeString()}
-                </span>
-              </span>
-            )}
-            {user && (
-              <span
+              <h1
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  padding: "2px 8px",
-                  borderRadius: 5,
-                  background: "rgba(77,158,255,0.08)",
-                  border: "1px solid rgba(77,158,255,0.15)",
-                  color: "#4d9eff",
+                  fontSize: 24,
+                  fontWeight: 600,
+                  fontFamily: "var(--font-display)",
+                  letterSpacing: "-0.6px",
+                  color: "var(--text-strong)",
+                  marginBottom: 6,
+                  lineHeight: 1.1,
                 }}
               >
-                <User size={10} /> {user.email || user.username}
-              </span>
-            )}
-          </p>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: 12,
-          }}
-        >
-          <div style={{ display: "flex", gap: 10 }}>
+                Security Operations
+              </h1>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--text-fainter)",
+                  fontFamily: "var(--font-mono)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span>{stats.scans.total} assessments</span>
+                {lastUpdate && (
+                  <>
+                    <span style={{ color: "var(--text-quietest)" }}>·</span>
+                    <span style={{ color: "var(--text-quietest)" }}>
+                      <span suppressHydrationWarning>
+                        {lastUpdate.toLocaleTimeString()}
+                      </span>
+                    </span>
+                  </>
+                )}
+                {user && (
+                  <>
+                    <span style={{ color: "var(--text-quietest)" }}>·</span>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        color: "var(--text-dim)",
+                      }}
+                    >
+                      <User size={10} /> {user.email || user.username}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexShrink: 0,
+              alignItems: "center",
+            }}
+          >
             <button
               onClick={() => load(true)}
+              aria-label="Refresh"
+              title="Refresh"
               style={{
+                width: 34,
+                height: 34,
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
-                padding: "9px 14px",
-                background: "var(--surface-3)",
+                justifyContent: "center",
+                background: "transparent",
                 border: "1px solid var(--border-default)",
                 color: "var(--text-dim)",
-                fontSize: 12,
-                fontFamily: "var(--font-display)",
-                fontWeight: 600,
                 borderRadius: 9,
                 cursor: "pointer",
                 transition: "all .2s",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.color = "#00e5cc";
-                e.currentTarget.style.borderColor = "rgba(0,229,204,0.3)";
+                e.currentTarget.style.borderColor = ACCENT;
+                e.currentTarget.style.color = "var(--accent-text)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.color = "var(--text-dim)";
                 e.currentTarget.style.borderColor = "var(--border-default)";
+                e.currentTarget.style.color = "var(--text-dim)";
               }}
             >
               <RefreshCw
@@ -1133,51 +1424,19 @@ export default function Dashboard() {
                 style={{
                   animation: refreshing ? "spin 1s linear infinite" : "none",
                 }}
-              />{" "}
-              Refresh
+              />
             </button>
-            <Link
-              href="/scans/network"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 7,
-                padding: "10px 18px",
-                background: "#00e5cc",
-                color: "#020a08",
-                fontSize: 12,
-                fontFamily: "var(--font-display)",
-                fontWeight: 700,
-                borderRadius: 9,
-                textDecoration: "none",
-                boxShadow: "0 4px 18px rgba(0,229,204,0.3)",
-                letterSpacing: "0.3px",
-                transition: "all .2s",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.boxShadow =
-                  "0 6px 24px rgba(0,229,204,0.45)";
-                e.currentTarget.style.transform = "translateY(-1px)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.boxShadow =
-                  "0 4px 18px rgba(0,229,204,0.3)";
-                e.currentTarget.style.transform = "translateY(0)";
-              }}
-            >
-              <Radar size={14} /> Network Scan
-            </Link>
             <Link
               href="/scans/web"
               style={{
-                display: "flex",
+                display: "inline-flex",
                 alignItems: "center",
-                gap: 7,
-                padding: "10px 18px",
-                background: "var(--surface-3)",
+                gap: 6,
+                padding: "8px 14px",
+                background: "transparent",
                 border: "1px solid var(--border-default)",
                 color: "var(--text-soft)",
-                fontSize: 12,
+                fontSize: 11.5,
                 fontFamily: "var(--font-display)",
                 fontWeight: 600,
                 borderRadius: 9,
@@ -1185,315 +1444,229 @@ export default function Dashboard() {
                 transition: "all .2s",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(167,139,250,0.1)";
-                e.currentTarget.style.borderColor = "rgba(167,139,250,0.3)";
-                e.currentTarget.style.color = "#a78bfa";
+                e.currentTarget.style.borderColor = ACCENT;
+                e.currentTarget.style.color = "var(--accent-text)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = "var(--surface-3)";
                 e.currentTarget.style.borderColor = "var(--border-default)";
                 e.currentTarget.style.color = "var(--text-soft)";
               }}
             >
-              <Globe size={14} /> Web Scan
+              <Globe size={12} /> Web
+            </Link>
+            <Link
+              href="/scans/network"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 16px",
+                background: ACCENT,
+                color: "var(--accent-on-bg)",
+                fontSize: 11.5,
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                borderRadius: 9,
+                textDecoration: "none",
+                boxShadow: "0 2px 12px var(--glow-accent-soft)",
+                letterSpacing: "0.2px",
+                transition: "all .2s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow =
+                  "0 4px 18px var(--glow-accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow =
+                  "0 2px 12px var(--glow-accent-soft)";
+              }}
+            >
+              <Radar size={13} /> Network
             </Link>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Stat Cards */}
+      {/* ─── Stat Cards ─── */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(5, 1fr)",
+          gridTemplateColumns: "repeat(4, 1fr)",
           gap: 22,
-          marginBottom: 28,
+          marginBottom: 26,
         }}
       >
         <StatCard
           label="Total Scans"
           value={stats.scans.total}
           icon={Server}
-          accent="#4d9eff"
+          tone={ACCENT}
           delay={0}
           loading={loading}
+          trend={sparks.total}
+          delta={deltas.total}
         />
         <StatCard
-          label="Active Scan Processes"
+          label="Active Now"
           value={stats.scans.running}
           icon={Activity}
-          accent="#00e5cc"
+          tone={SKY}
           delay={60}
           loading={loading}
-          badge={isScanning ? "Live" : undefined}
+          hint={isScanning ? "Live" : undefined}
+          trend={!isScanning ? sparks.total : undefined}
         />
         <StatCard
-          label="Total Issues Found"
+          label="Issues Found"
           value={totalVulns}
           icon={ShieldAlert}
-          accent="#ffcc00"
+          tone={SEV.medium}
           delay={120}
           loading={loading}
-          badge={totalVulns > 0 ? `${totalVulns} found` : undefined}
+          trend={sparks.issues}
+          delta={deltas.issues}
         />
         <StatCard
           label="Critical Findings"
           value={vulns.critical ?? 0}
           icon={AlertTriangle}
-          accent="#ff3355"
+          tone={SEV.critical}
           delay={180}
           loading={loading}
-          badge={hasCritical ? "Urgent" : undefined}
-        />
-        <StatCard
-          label="Completed Scans"
-          value={stats.scans.completed}
-          icon={CheckCircle2}
-          accent="#00cc88"
-          delay={240}
-          loading={loading}
+          hint={hasCritical ? "Urgent" : undefined}
+          trend={!hasCritical ? sparks.critical : undefined}
+          delta={!hasCritical ? deltas.critical : null}
         />
       </div>
 
-      {/* Middle Row */}
+      {/* ─── Middle: Severity | Trend | Activity ─── */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "320px 1fr 320px",
+          gridTemplateColumns: "340px 1fr 320px",
           gap: 22,
           marginBottom: 22,
         }}
       >
-        {/* Left Column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Severity breakdown */}
+        {/* Severity Composition */}
+        <div
+          style={{
+            background: "var(--surface-1)",
+            border: "1px solid var(--border-default)",
+            borderRadius: 14,
+            padding: "22px 22px",
+            boxShadow: "var(--card-shadow)",
+            animation: "card-enter .5s cubic-bezier(0.16,1,0.3,1) .1s both",
+          }}
+        >
           <div
             style={{
-              background: "var(--surface-1)",
-              border: "1px solid var(--border-default)",
-              borderRadius: 14,
-              padding: "22px 20px",
-              flex: 1,
-              animation: "card-enter .5s cubic-bezier(0.16,1,0.3,1) .1s both",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 18,
             }}
           >
-            <div
+            <h3
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 20,
+                fontSize: 13,
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                color: "var(--text-strong)",
+                letterSpacing: "-0.2px",
               }}
             >
-              <h3
+              <span
+                aria-hidden
                 style={{
-                  fontSize: 13,
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 700,
-                  color: "var(--text-strong)",
+                  display: "inline-block",
+                  width: 3,
+                  height: 12,
+                  background:
+                    "linear-gradient(180deg, var(--critical), var(--medium))",
+                  borderRadius: 2,
+                  marginRight: 9,
+                  verticalAlign: "-2px",
                 }}
-              >
-                Severity Breakdown
-              </h3>
-              <Link
-                href="/vulnerabilities"
-                style={{
-                  fontSize: 10,
-                  fontFamily: "var(--font-mono)",
-                  color: "var(--accent-text)",
-                  textDecoration: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 3,
-                  opacity: 0.8,
-                  transition: "opacity .2s",
-                }}
-                onMouseEnter={(e: any) => (e.currentTarget.style.opacity = "1")}
-                onMouseLeave={(e: any) =>
-                  (e.currentTarget.style.opacity = "0.8")
-                }
-              >
-                View <ArrowUpRight size={11} />
-              </Link>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <SeverityBar
-                label="Critical"
-                value={vulns.critical ?? 0}
-                color="#ff3355"
-                max={maxSev}
-                delay={0}
               />
-              <SeverityBar
-                label="High"
-                value={vulns.high ?? 0}
-                color="#ff6b35"
-                max={maxSev}
-                delay={60}
-              />
-              <SeverityBar
-                label="Medium"
-                value={vulns.medium ?? 0}
-                color="#ffcc00"
-                max={maxSev}
-                delay={120}
-              />
-              <SeverityBar
-                label="Low"
-                value={vulns.low ?? 0}
-                color="#00cc88"
-                max={maxSev}
-                delay={180}
-              />
-              <SeverityBar
-                label="Info"
-                value={vulns.info ?? 0}
-                color="#4d9eff"
-                max={maxSev}
-                delay={240}
-              />
-            </div>
+              Risk Composition
+            </h3>
+            <Link
+              href="/vulnerabilities"
+              style={{
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+                color: "var(--accent-text)",
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 3,
+                opacity: 0.8,
+                transition: "opacity .2s",
+              }}
+              onMouseEnter={(e: any) => (e.currentTarget.style.opacity = "1")}
+              onMouseLeave={(e: any) => (e.currentTarget.style.opacity = "0.8")}
+            >
+              View <ArrowUpRight size={11} />
+            </Link>
           </div>
 
-          {/* Scan Summary */}
-          <div
-            style={{
-              background: "var(--surface-1)",
-              border: "1px solid var(--border-default)",
-              borderRadius: 14,
-              padding: "22px 20px",
-              animation: "card-enter .5s cubic-bezier(0.16,1,0.3,1) .2s both",
-            }}
-          >
+          {/* Big total + stacked composition bar */}
+          <div style={{ marginBottom: 18 }}>
             <div
               style={{
                 display: "flex",
+                alignItems: "baseline",
                 justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 16,
+                marginBottom: 10,
               }}
             >
-              <h3
+              <div
                 style={{
-                  fontSize: 13,
                   fontFamily: "var(--font-display)",
+                  fontSize: 30,
                   fontWeight: 700,
-                  color: "var(--text-strong)",
+                  letterSpacing: "-1px",
+                  lineHeight: 1,
+                  background:
+                    "linear-gradient(180deg, var(--text-strong), var(--text-dim) 130%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
                 }}
               >
-                Scan Summary
-              </h3>
-              <Link
-                href="/scans"
+                {totalVulns.toLocaleString()}
+              </div>
+              <div
                 style={{
-                  fontSize: 10,
+                  fontSize: 9.5,
                   fontFamily: "var(--font-mono)",
-                  color: "var(--accent-text)",
-                  textDecoration: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 3,
-                  opacity: 0.8,
+                  color: "var(--text-fainter)",
+                  textTransform: "uppercase",
+                  letterSpacing: "1px",
+                  fontWeight: 600,
                 }}
-                onMouseEnter={(e: any) => (e.currentTarget.style.opacity = "1")}
-                onMouseLeave={(e: any) =>
-                  (e.currentTarget.style.opacity = "0.8")
-                }
               >
-                View <ArrowUpRight size={11} />
-              </Link>
+                Findings
+              </div>
             </div>
-            {loading ? (
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 10 }}
-              >
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} h={22} />
-                ))}
-              </div>
-            ) : (
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 12 }}
-              >
-                {(
-                  [
-                    {
-                      label: "Completed",
-                      value: stats.scans.completed,
-                      color: "#00cc88",
-                      icon: CheckCircle2,
-                    },
-                    {
-                      label: "Running",
-                      value: stats.scans.running,
-                      color: "var(--accent-text)",
-                      icon: Activity,
-                      live: true,
-                    },
-                    {
-                      label: "Failed",
-                      value: stats.scans.failed,
-                      color: "#ff3355",
-                      icon: AlertCircle,
-                    },
-                  ] as const
-                ).map((m) => (
-                  <div
-                    key={m.label}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      background: m.value > 0 ? `${m.color}06` : "transparent",
-                      border: `1px solid ${m.value > 0 ? m.color + "15" : "transparent"}`,
-                      transition: "all .3s",
-                    }}
-                  >
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 8 }}
-                    >
-                      <m.icon
-                        size={13}
-                        color={m.value > 0 ? m.color : "var(--text-quietest)"}
-                        style={{
-                          animation:
-                            (m as any).live && m.value > 0
-                              ? "spin 3s linear infinite"
-                              : "none",
-                        }}
-                      />
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontFamily: "var(--font-mono)",
-                          color:
-                            m.value > 0
-                              ? "var(--text-dim)"
-                              : "var(--text-quietest)",
-                        }}
-                      >
-                        {m.label}
-                      </span>
-                    </div>
-                    <span
-                      style={{
-                        fontFamily: "var(--font-display)",
-                        fontSize: 18,
-                        fontWeight: 800,
-                        color: m.value > 0 ? m.color : "var(--text-quietest)",
-                        transition: "color .3s",
-                        textShadow:
-                          m.value > 0 ? `0 0 16px ${m.color}40` : "none",
-                      }}
-                    >
-                      {m.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <CompositionBar segments={severitySegments} total={totalVulns} />
+          </div>
+
+          {/* Per-severity rows */}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {severitySegments.map((s, i) => (
+              <SeverityRow
+                key={s.label}
+                label={s.label}
+                value={s.value}
+                color={s.color}
+                total={totalVulns}
+                delay={i * 50}
+              />
+            ))}
           </div>
         </div>
 
@@ -1506,6 +1679,7 @@ export default function Dashboard() {
             padding: "24px 28px",
             display: "flex",
             flexDirection: "column",
+            boxShadow: "var(--card-shadow)",
             animation: "card-enter .5s cubic-bezier(0.16,1,0.3,1) .15s both",
           }}
         >
@@ -1525,15 +1699,29 @@ export default function Dashboard() {
                   fontWeight: 700,
                   color: "var(--text-strong)",
                   marginBottom: 3,
+                  letterSpacing: "-0.2px",
                 }}
               >
+                <span
+                  aria-hidden
+                  style={{
+                    display: "inline-block",
+                    width: 3,
+                    height: 12,
+                    background:
+                      "linear-gradient(180deg, var(--brand-sky), var(--accent))",
+                    borderRadius: 2,
+                    marginRight: 9,
+                    verticalAlign: "-2px",
+                  }}
+                />
                 Threat Detection Trend
               </h3>
               <p
                 style={{
-                  fontSize: 10,
+                  fontSize: 11,
                   fontFamily: "var(--font-mono)",
-                  color: "var(--text-faintest)",
+                  color: "var(--text-fainter)",
                 }}
               >
                 Monthly vulnerability discovery rate
@@ -1542,9 +1730,9 @@ export default function Dashboard() {
             <div style={{ display: "flex", gap: 14 }}>
               {(
                 [
-                  ["Critical", "#ff3355"],
-                  ["High", "#ff6b35"],
-                  ["Medium", "#ffcc00"],
+                  ["Critical", "#EF4444"],
+                  ["High", "#F97316"],
+                  ["Medium", "#EAB308"],
                 ] as const
               ).map(([l, c]) => (
                 <div
@@ -1560,13 +1748,12 @@ export default function Dashboard() {
                 >
                   <div
                     style={{
-                      width: 8,
-                      height: 8,
+                      width: 7,
+                      height: 7,
                       borderRadius: 2,
                       background: c,
-                      boxShadow: `0 0 6px ${c}60`,
                     }}
-                  />{" "}
+                  />
                   {l}
                 </div>
               ))}
@@ -1584,7 +1771,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Activity Feed */}
+        {/* Live Activity */}
         <div
           style={{
             background: "var(--surface-1)",
@@ -1594,6 +1781,7 @@ export default function Dashboard() {
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
+            boxShadow: "var(--card-shadow)",
             animation: "card-enter .5s cubic-bezier(0.16,1,0.3,1) .2s both",
           }}
         >
@@ -1611,18 +1799,35 @@ export default function Dashboard() {
                 fontFamily: "var(--font-display)",
                 fontWeight: 700,
                 color: "var(--text-strong)",
+                letterSpacing: "-0.2px",
               }}
             >
+              <span
+                aria-hidden
+                style={{
+                  display: "inline-block",
+                  width: 3,
+                  height: 12,
+                  background: isScanning ? SKY : SAFE,
+                  borderRadius: 2,
+                  marginRight: 9,
+                  verticalAlign: "-2px",
+                  boxShadow: `0 0 8px ${isScanning ? SKY : SAFE}`,
+                }}
+              />
               Live Activity
             </h3>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 5,
-                fontSize: 9,
+                gap: 6,
+                fontSize: 9.5,
                 fontFamily: "var(--font-mono)",
-                color: isScanning ? "#00e5cc" : "#00cc88",
+                color: isScanning ? SKY : SAFE,
+                letterSpacing: "0.8px",
+                textTransform: "uppercase",
+                fontWeight: 600,
               }}
             >
               <div
@@ -1630,12 +1835,11 @@ export default function Dashboard() {
                   width: 5,
                   height: 5,
                   borderRadius: "50%",
-                  background: isScanning ? "#00e5cc" : "#00cc88",
-                  boxShadow: `0 0 8px ${isScanning ? "#00e5cc" : "#00cc88"}`,
-                  animation: "pulse-soft 1.5s infinite",
+                  background: isScanning ? SKY : SAFE,
+                  animation: "pulse-soft 1.6s infinite",
                 }}
               />
-              {isScanning ? "SCANNING" : "LIVE"}
+              {isScanning ? "Scanning" : "Live"}
             </div>
           </div>
 
@@ -1643,7 +1847,7 @@ export default function Dashboard() {
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: 7,
+              gap: 6,
               flex: 1,
               overflowY: "auto",
             }}
@@ -1657,7 +1861,6 @@ export default function Dashboard() {
                     gap: 10,
                     padding: "10px 12px",
                     borderRadius: 10,
-                    background: "var(--surface-1)",
                   }}
                 >
                   <Skeleton w={32} h={32} r={9} />
@@ -1684,30 +1887,30 @@ export default function Dashboard() {
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 12,
-                  paddingTop: 20,
+                  paddingTop: 28,
                 }}
               >
                 <div
                   style={{
-                    width: 44,
-                    height: 44,
+                    width: 46,
+                    height: 46,
                     borderRadius: 12,
-                    background: "rgba(0,229,204,0.06)",
-                    border: "1px solid rgba(0,229,204,0.1)",
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border-subtle)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
-                  <Target size={20} color="#2a3a4a" />
+                  <Target size={20} color="var(--text-quietest)" />
                 </div>
                 <div style={{ textAlign: "center" }}>
                   <div
                     style={{
-                      fontSize: 12,
+                      fontSize: 12.5,
                       fontFamily: "var(--font-display)",
                       fontWeight: 600,
-                      color: "var(--text-quietest)",
+                      color: "var(--text-dim)",
                       marginBottom: 4,
                     }}
                   >
@@ -1715,9 +1918,9 @@ export default function Dashboard() {
                   </div>
                   <div
                     style={{
-                      fontSize: 10,
+                      fontSize: 10.5,
                       fontFamily: "var(--font-mono)",
-                      color: "#1a2a3a",
+                      color: "var(--text-fainter)",
                     }}
                   >
                     Start a scan to see live events
@@ -1732,9 +1935,9 @@ export default function Dashboard() {
                     color: "var(--accent-text)",
                     textDecoration: "none",
                     padding: "6px 14px",
-                    borderRadius: 7,
-                    border: "1px solid rgba(0,229,204,0.25)",
-                    background: "rgba(0,229,204,0.07)",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-default)",
+                    background: "var(--surface-1)",
                     marginTop: 4,
                   }}
                 >
@@ -1744,13 +1947,14 @@ export default function Dashboard() {
             ) : (
               stats.activity_feed.map((item, idx) => {
                 const colors: Record<string, string> = {
-                  critical: "#ff3355",
-                  high: "#ff6b35",
-                  info: "#4d9eff",
-                  success: "#00cc88",
-                  medium: "#ffcc00",
+                  critical: "var(--critical)",
+                  high: "var(--high)",
+                  medium: "var(--medium)",
+                  low: "var(--low)",
+                  info: "var(--info)",
+                  success: "var(--safe)",
                 };
-                const col = colors[item.severity] ?? "#4d9eff";
+                const col = colors[item.severity] ?? "var(--info)";
                 const Icon = activityIcon(item.type, item.severity);
                 return (
                   <div
@@ -1760,9 +1964,7 @@ export default function Dashboard() {
                       gap: 10,
                       padding: "10px 12px",
                       borderRadius: 10,
-                      background: "var(--surface-1)",
-                      border: "1px solid rgba(255,255,255,0.03)",
-                      animation: `slide-in .3s cubic-bezier(0.16,1,0.3,1) ${idx * 40}ms both`,
+                      animation: `slide-in .3s cubic-bezier(0.16,1,0.3,1) ${idx * 35}ms both`,
                       transition: "background .2s",
                     }}
                     onMouseEnter={(e) =>
@@ -1771,7 +1973,7 @@ export default function Dashboard() {
                     }
                     onMouseLeave={(e) =>
                       ((e.currentTarget as HTMLDivElement).style.background =
-                        "var(--surface-1)")
+                        "transparent")
                     }
                   >
                     <div
@@ -1779,21 +1981,19 @@ export default function Dashboard() {
                         width: 32,
                         height: 32,
                         borderRadius: 9,
-                        background: `${col}14`,
-                        border: `1px solid ${col}22`,
+                        background: `color-mix(in srgb, ${col} 12%, transparent)`,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         flexShrink: 0,
-                        boxShadow: `0 0 10px ${col}15`,
                       }}
                     >
                       <Icon size={14} color={col} />
                     </div>
-                    <div style={{ overflow: "hidden" }}>
+                    <div style={{ overflow: "hidden", flex: 1 }}>
                       <div
                         style={{
-                          fontSize: 12,
+                          fontSize: 12.5,
                           fontFamily: "var(--font-display)",
                           fontWeight: 600,
                           color: "var(--text-strong)",
@@ -1810,7 +2010,7 @@ export default function Dashboard() {
                         style={{
                           fontSize: 10,
                           fontFamily: "var(--font-mono)",
-                          color: "var(--text-faintest)",
+                          color: "var(--text-fainter)",
                           display: "flex",
                           alignItems: "center",
                           gap: 4,
@@ -1832,24 +2032,24 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Scans Table */}
+      {/* ─── Recent Scans Table ─── */}
       <div
         style={{
           background: "var(--surface-1)",
           border: "1px solid var(--border-default)",
           borderRadius: 14,
           overflow: "hidden",
+          boxShadow: "var(--card-shadow)",
           animation: "card-enter .5s cubic-bezier(0.16,1,0.3,1) .3s both",
         }}
       >
         <div
           style={{
-            padding: "18px 24px",
-            borderBottom: "1px solid var(--border-default)",
+            padding: "20px 24px",
+            borderBottom: "1px solid var(--border-subtle)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            background: "var(--surface-2)",
           }}
         >
           <div>
@@ -1859,16 +2059,30 @@ export default function Dashboard() {
                 fontFamily: "var(--font-display)",
                 fontWeight: 700,
                 color: "var(--text-strong)",
-                marginBottom: 2,
+                marginBottom: 3,
+                letterSpacing: "-0.2px",
               }}
             >
+              <span
+                aria-hidden
+                style={{
+                  display: "inline-block",
+                  width: 3,
+                  height: 12,
+                  background:
+                    "linear-gradient(180deg, var(--accent), var(--brand-sky))",
+                  borderRadius: 2,
+                  marginRight: 9,
+                  verticalAlign: "-2px",
+                }}
+              />
               Latest Scan Executions
             </h3>
             <p
               style={{
-                fontSize: 10,
+                fontSize: 10.5,
                 fontFamily: "var(--font-mono)",
-                color: "var(--text-faintest)",
+                color: "var(--text-fainter)",
               }}
             >
               {loading
@@ -1886,19 +2100,17 @@ export default function Dashboard() {
               display: "flex",
               alignItems: "center",
               gap: 4,
-              padding: "6px 12px",
-              borderRadius: 7,
-              border: "1px solid rgba(0,229,204,0.2)",
-              background: "rgba(0,229,204,0.05)",
+              padding: "7px 13px",
+              borderRadius: 8,
+              border: "1px solid var(--border-default)",
+              background: "var(--surface-1)",
               transition: "all .2s",
             }}
             onMouseEnter={(e: any) => {
-              e.currentTarget.style.background = "rgba(0,229,204,0.1)";
-              e.currentTarget.style.borderColor = "rgba(0,229,204,0.35)";
+              e.currentTarget.style.borderColor = ACCENT;
             }}
             onMouseLeave={(e: any) => {
-              e.currentTarget.style.background = "rgba(0,229,204,0.05)";
-              e.currentTarget.style.borderColor = "rgba(0,229,204,0.2)";
+              e.currentTarget.style.borderColor = "var(--border-default)";
             }}
           >
             View All <ChevronRight size={12} />
@@ -1929,29 +2141,30 @@ export default function Dashboard() {
             ))}
           </div>
         ) : stats.recent_scans.length === 0 ? (
-          <div style={{ padding: "52px", textAlign: "center" }}>
+          <div style={{ padding: "60px", textAlign: "center" }}>
             <div
               style={{
                 width: 56,
                 height: 56,
                 borderRadius: 14,
-                background: "rgba(0,229,204,0.06)",
-                border: "1px solid rgba(0,229,204,0.1)",
+                background: "var(--surface-2)",
+                border: "1px solid var(--border-subtle)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                margin: "0 auto 16px",
+                margin: "0 auto 18px",
               }}
             >
-              <Radar size={26} color="#2a3a4a" />
+              <Radar size={26} color="var(--text-quietest)" />
             </div>
             <div
               style={{
-                fontSize: 14,
+                fontSize: 15,
                 fontFamily: "var(--font-display)",
                 fontWeight: 700,
-                color: "var(--text-quietest)",
+                color: "var(--text-strong)",
                 marginBottom: 6,
+                letterSpacing: "-0.2px",
               }}
             >
               No scans yet
@@ -1960,7 +2173,7 @@ export default function Dashboard() {
               style={{
                 fontSize: 12,
                 fontFamily: "var(--font-mono)",
-                color: "var(--text-quietest)",
+                color: "var(--text-fainter)",
                 marginBottom: 20,
               }}
             >
@@ -1974,12 +2187,12 @@ export default function Dashboard() {
                   fontSize: 12,
                   fontFamily: "var(--font-display)",
                   fontWeight: 700,
-                  color: "#020a08",
+                  color: "var(--accent-on-bg)",
                   padding: "10px 20px",
-                  background: "#00e5cc",
-                  borderRadius: 9,
+                  background: ACCENT,
+                  borderRadius: 10,
                   textDecoration: "none",
-                  boxShadow: "0 4px 16px rgba(0,229,204,0.28)",
+                  boxShadow: "0 4px 16px var(--glow-accent-soft)",
                 }}
               >
                 Network Scan
@@ -1992,9 +2205,9 @@ export default function Dashboard() {
                   fontWeight: 600,
                   color: "var(--text-soft)",
                   padding: "10px 20px",
-                  background: "var(--surface-3)",
+                  background: "var(--surface-1)",
                   border: "1px solid var(--border-default)",
-                  borderRadius: 9,
+                  borderRadius: 10,
                   textDecoration: "none",
                 }}
               >
@@ -2012,12 +2225,7 @@ export default function Dashboard() {
               }}
             >
               <thead>
-                <tr
-                  style={{
-                    borderBottom: "1px solid var(--border-subtle)",
-                    background: "var(--surface-2)",
-                  }}
-                >
+                <tr style={{ background: "var(--surface-2)" }}>
                   {[
                     "Scan ID",
                     "Target",
@@ -2029,13 +2237,13 @@ export default function Dashboard() {
                     <th
                       key={h}
                       style={{
-                        padding: "12px 22px",
-                        fontSize: 9,
+                        padding: "13px 22px",
+                        fontSize: 9.5,
                         fontFamily: "var(--font-mono)",
-                        color: "var(--text-quietest)",
+                        color: "var(--text-fainter)",
                         textTransform: "uppercase",
                         letterSpacing: "1.2px",
-                        fontWeight: 500,
+                        fontWeight: 600,
                       }}
                     >
                       {h}
@@ -2049,33 +2257,32 @@ export default function Dashboard() {
                   const overall = risk.overall ?? "unknown";
                   const riskColor =
                     overall === "critical"
-                      ? "#ff3355"
+                      ? "var(--critical)"
                       : overall === "high"
-                        ? "#ff6b35"
+                        ? "var(--high)"
                         : overall === "medium"
-                          ? "#ffcc00"
+                          ? "var(--medium)"
                           : overall === "low"
-                            ? "#00cc88"
-                            : "var(--text-faintest)";
+                            ? "var(--low)"
+                            : "var(--text-fainter)";
                   return (
                     <tr
                       key={scan.id}
                       style={{
-                        borderBottom: "1px solid var(--border-subtle)",
-                        transition: "background .18s",
-                        animation: `slide-in .35s cubic-bezier(0.16,1,0.3,1) ${i * 50}ms both`,
-                        cursor: "default",
+                        borderTop: "1px solid var(--border-subtle)",
+                        transition: "background .2s, box-shadow .25s",
+                        animation: `slide-in .35s cubic-bezier(0.16,1,0.3,1) ${i * 40}ms both`,
                       }}
-                      onMouseEnter={(e) =>
-                        ((
-                          e.currentTarget as HTMLTableRowElement
-                        ).style.background = "rgba(0,229,204,0.025)")
-                      }
-                      onMouseLeave={(e) =>
-                        ((
-                          e.currentTarget as HTMLTableRowElement
-                        ).style.background = "transparent")
-                      }
+                      onMouseEnter={(e) => {
+                        const row = e.currentTarget as HTMLTableRowElement;
+                        row.style.background = `linear-gradient(90deg, color-mix(in srgb, ${riskColor} 8%, transparent), var(--surface-2) 35%)`;
+                        row.style.boxShadow = `inset 3px 0 0 0 ${riskColor}`;
+                      }}
+                      onMouseLeave={(e) => {
+                        const row = e.currentTarget as HTMLTableRowElement;
+                        row.style.background = "transparent";
+                        row.style.boxShadow = "none";
+                      }}
                     >
                       <td
                         style={{
@@ -2093,18 +2300,18 @@ export default function Dashboard() {
                           style={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 9,
+                            gap: 10,
                           }}
                         >
                           <div
                             style={{
                               width: 28,
                               height: 28,
-                              borderRadius: 7,
+                              borderRadius: 8,
                               background:
                                 scan.scan_type === "web_assessment"
-                                  ? "rgba(167,139,250,0.1)"
-                                  : "rgba(0,229,204,0.1)",
+                                  ? "color-mix(in srgb, var(--brand-sky) 14%, transparent)"
+                                  : "color-mix(in srgb, var(--accent) 12%, transparent)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -2112,9 +2319,9 @@ export default function Dashboard() {
                             }}
                           >
                             {scan.scan_type === "web_assessment" ? (
-                              <Globe size={13} color="#a78bfa" />
+                              <Globe size={13} color={SKY} />
                             ) : (
-                              <Wifi size={13} color="#00e5cc" />
+                              <Wifi size={13} color={ACCENT} />
                             )}
                           </div>
                           <div
@@ -2123,7 +2330,7 @@ export default function Dashboard() {
                               fontFamily: "var(--font-display)",
                               fontWeight: 600,
                               color: "var(--text-strong)",
-                              maxWidth: 200,
+                              maxWidth: 220,
                               overflow: "hidden",
                               textOverflow: "ellipsis",
                               whiteSpace: "nowrap",
@@ -2153,7 +2360,7 @@ export default function Dashboard() {
                           style={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 6,
+                            gap: 7,
                           }}
                         >
                           <div
@@ -2162,7 +2369,6 @@ export default function Dashboard() {
                               height: 6,
                               borderRadius: "50%",
                               background: riskColor,
-                              boxShadow: `0 0 6px ${riskColor}`,
                             }}
                           />
                           <span
@@ -2172,6 +2378,7 @@ export default function Dashboard() {
                               fontWeight: 700,
                               color: riskColor,
                               textTransform: "uppercase",
+                              letterSpacing: "0.3px",
                             }}
                           >
                             {overall}
@@ -2183,7 +2390,7 @@ export default function Dashboard() {
                           padding: "15px 22px",
                           fontSize: 11,
                           fontFamily: "var(--font-mono)",
-                          color: "var(--text-faintest)",
+                          color: "var(--text-fainter)",
                         }}
                       >
                         <span suppressHydrationWarning>
@@ -2202,12 +2409,12 @@ export default function Dashboard() {
       <style>{`
         @keyframes pulse-soft  { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.55;transform:scale(1.15)} }
         @keyframes spin         { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        @keyframes card-enter   { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes slide-in     { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
-        @keyframes shimmer      { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-        @keyframes badge-pulse  { 0%,100%{opacity:1;box-shadow:none} 50%{opacity:.8;box-shadow:0 0 12px currentColor} }
-        @keyframes skeleton-pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
-        @keyframes pulse-border { 0%,100%{border-color:rgba(0,229,204,0.25)} 50%{border-color:rgba(0,229,204,0.55)} }
+        @keyframes halo-spin    { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes card-enter   { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes slide-in     { from{opacity:0;transform:translateX(-6px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes skeleton-pulse { 0%,100%{opacity:.55} 50%{opacity:1} }
+        @keyframes fade-in      { from{opacity:0} to{opacity:1} }
+        @keyframes drift        { 0%,100%{transform:translate(0,0)} 50%{transform:translate(20px,-15px)} }
       `}</style>
     </div>
   );
