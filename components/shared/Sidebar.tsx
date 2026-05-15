@@ -94,9 +94,6 @@ export default function Sidebar({ role = 'user' }: { role?: 'admin' | 'user' | '
             <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-strong)', fontFamily: 'var(--font-display)', letterSpacing: '-0.3px' }}>
               Secure<span style={{ color: 'var(--accent-text)' }}>X</span> Pro
             </div>
-            <div style={{ fontSize: 9, color: 'var(--text-quietest)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1.2px', marginTop: 1 }}>
-              v2.4.1 · {role === 'agent' ? 'Agent View' : 'User Console'}
-            </div>
           </div>
         </div>
 

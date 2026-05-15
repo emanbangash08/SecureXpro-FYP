@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bell, LogOut } from "lucide-react";
+import { Bell } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import type { ApiScanStatus } from "@/lib/types";
@@ -259,10 +259,7 @@ export default function Navbar() {
           onMouseLeave={(e) =>
             ((e.currentTarget as HTMLDivElement).style.boxShadow = "none")
           }
-          onClick={() => {
-            logout();
-            router.push("/login");
-          }}
+          onClick={() => router.push("/settings")}
         >
           {initial}
         </div>
