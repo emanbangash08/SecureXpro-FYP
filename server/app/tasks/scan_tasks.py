@@ -190,9 +190,13 @@ async def _execute_scan(scan_id: str) -> None:
             _port = _parsed.port or (443 if _parsed.scheme == "https" else 80)
             _scheme = _parsed.scheme
             _all_web: list = []
+            _phase_timings: dict = {}
+            _ssl_info: dict = {}
+            _spider_urls: list[str] = []
 
             # Sub-phase: web_init — connect to target
             await _set_phase(db, scan_id, "web_init")
+            _t_init = datetime.now(timezone.utc)
             await _log(db, scan_id, "web_init", "cmd", f"> curl -ILk {web_url}")
             await _log(db, scan_id, "web_init", "info", f"  Establishing connection to {web_url} ...")
             try:
@@ -201,10 +205,19 @@ async def _execute_scan(scan_id: str) -> None:
                 await _log(db, scan_id, "web_init", "error",
                            f"  [ERROR] Cannot connect to {web_url}: {_conn_exc}")
                 raise
+            _phase_timings["web_init"] = round((datetime.now(timezone.utc) - _t_init).total_seconds(), 1)
             await _log(db, scan_id, "web_init", "success",
                        f"  [+] HTTP {_resp.status_code} | Server: {_resp.headers.get('server', '?')} | {len(_resp.content)} bytes")
 
+            # Collect SSL cert info for HTTPS targets
+            if _scheme == "https":
+                try:
+                    _ssl_info = web_service.get_ssl_info(_host, _port)
+                except Exception:
+                    _ssl_info = {}
+
             # Sub-phase: web_headers — security headers, SSL, CORS, cookies
+            _t_headers = datetime.now(timezone.utc)
             await _set_phase(db, scan_id, "web_headers")
             await _log(db, scan_id, "web_headers", "cmd",
                        "> securex-web --check-headers --check-ssl --check-cors --check-cookies")
@@ -227,10 +240,12 @@ async def _execute_scan(scan_id: str) -> None:
                     await _log(db, scan_id, "web_headers", "warning",
                                f"  [!] {_label} check error: {exc}")
 
+            _phase_timings["web_headers"] = round((datetime.now(timezone.utc) - _t_headers).total_seconds(), 1)
             await _log(db, scan_id, "web_headers", "success",
                        f"  [+] Header audit complete — {len(_all_web)} finding(s) so far")
 
             # Sub-phase: web_active — path probing, injection testing, CSRF
+            _t_active = datetime.now(timezone.utc)
             await _set_phase(db, scan_id, "web_active")
             await _log(db, scan_id, "web_active", "cmd",
                        f"> securex-web --probe-paths {web_service.SENSITIVE_PATH_COUNT} "
@@ -322,12 +337,61 @@ async def _execute_scan(scan_id: str) -> None:
             except Exception as exc:
                 await _log(db, scan_id, "web_active", "warning", f"  [!] Cookie endpoint check error: {exc}")
 
+            # A04 — Insecure Design (rate limiting on auth endpoints)
+            await _log(db, scan_id, "web_active", "info",
+                       "  Testing auth endpoints for rate limiting (A04: Insecure Design)...")
+            try:
+                _rl_fnd = await web_service.check_rate_limiting(_client, web_url)
+                _all_web += _rl_fnd
+                for _f in _rl_fnd:
+                    await _log(db, scan_id, "web_active", "warning",
+                               f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                if not _rl_fnd:
+                    await _log(db, scan_id, "web_active", "success",
+                               "  [+] Auth endpoints appear to enforce rate limiting")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] Rate limit check error: {exc}")
+
+            # A08 — Software & Data Integrity Failures (Subresource Integrity)
+            await _log(db, scan_id, "web_active", "info",
+                       "  Inspecting HTML for missing Subresource Integrity (A08: Data Integrity)...")
+            try:
+                _sri_fnd = web_service.check_subresource_integrity(_resp, web_url)
+                _all_web += _sri_fnd
+                for _f in _sri_fnd:
+                    await _log(db, scan_id, "web_active", "warning",
+                               f"  [{_f.severity.value.upper()}] {_f.title}")
+                if not _sri_fnd:
+                    await _log(db, scan_id, "web_active", "success",
+                               "  [+] All cross-origin assets have SRI or none are loaded")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] SRI check error: {exc}")
+
+            # A09 — Security Logging & Monitoring Failures
+            await _log(db, scan_id, "web_active", "info",
+                       "  Probing for exposed logs & verbose error pages (A09: Logging)...")
+            try:
+                _log_fnd = await web_service.check_logging_and_monitoring(_client, web_url)
+                _all_web += _log_fnd
+                for _f in _log_fnd[:5]:
+                    _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                    await _log(db, scan_id, "web_active", _lvl,
+                               f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                if not _log_fnd:
+                    await _log(db, scan_id, "web_active", "success",
+                               "  [+] No log exposure or verbose error pages detected")
+            except Exception as exc:
+                await _log(db, scan_id, "web_active", "warning", f"  [!] Logging check error: {exc}")
+
+            _phase_timings["web_active"] = round((datetime.now(timezone.utc) - _t_active).total_seconds(), 1)
+
             try:
                 await _client.aclose()
             except Exception:
                 pass
 
             # Sub-phase: web_zap — OWASP ZAP Docker active scan (WSL2)
+            _t_zap = datetime.now(timezone.utc)
             await _set_phase(db, scan_id, "web_zap")
             await _log(db, scan_id, "web_zap", "cmd",
                        "> docker run ghcr.io/zaproxy/zaproxy:stable zap.sh -daemon --spider --ascan")
@@ -390,6 +454,11 @@ async def _execute_scan(scan_id: str) -> None:
                     except asyncio.CancelledError:
                         pass
 
+                # Collect discovered URLs from ZAP findings
+                for _f in _zap_findings:
+                    if _f.affected_url and _f.affected_url not in _spider_urls:
+                        _spider_urls.append(_f.affected_url)
+
                 if _zap_findings:
                     await _log(db, scan_id, "web_zap", "info",
                                "  Phase 2: Active scan complete")
@@ -408,52 +477,182 @@ async def _execute_scan(scan_id: str) -> None:
                 await _log(db, scan_id, "web_zap", "info",
                            "  Run: wsl -d Ubuntu -u root -- service docker start")
 
+            _phase_timings["web_zap"] = round((datetime.now(timezone.utc) - _t_zap).total_seconds(), 1)
+
+            # Sub-phase: web_nikto — Nikto Docker misconfiguration scan (WSL2)
+            _t_nikto = datetime.now(timezone.utc)
+            await _set_phase(db, scan_id, "web_nikto")
+            await _log(db, scan_id, "web_nikto", "cmd",
+                       f"> docker run --rm sullo/nikto -h {web_url} -Tuning 123bde -Format json")
+            from app.services import nikto_client
+            await _log(db, scan_id, "web_nikto", "info",
+                       "  Checking Docker availability for Nikto...")
+            nikto_docker_ok = await nikto_client.check_docker_available()
+            if nikto_docker_ok:
+                await _log(db, scan_id, "web_nikto", "info",
+                           f"  Launching Nikto container — target: {web_url}")
+                await _log(db, scan_id, "web_nikto", "info",
+                           "  Tuning: interesting files, info disclosure, misconfigs, default files, server config")
+                try:
+                    _nikto_fnd = await nikto_client.run_nikto_scan(
+                        web_url,
+                        scan_id_suffix=scan_id[-8:],
+                    )
+                    _all_web += _nikto_fnd
+                    if _nikto_fnd:
+                        for _f in _nikto_fnd[:10]:
+                            _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                            await _log(db, scan_id, "web_nikto", _lvl,
+                                       f"  [{_f.severity.value.upper()}] {_f.title}")
+                        await _log(db, scan_id, "web_nikto", "success",
+                                   f"  [+] Nikto scan complete — {len(_nikto_fnd)} finding(s)")
+                    else:
+                        await _log(db, scan_id, "web_nikto", "success",
+                                   "  [+] Nikto scan complete — no misconfigurations detected")
+                except Exception as _nikto_exc:
+                    await _log(db, scan_id, "web_nikto", "warning",
+                               f"  [!] Nikto scan error: {_nikto_exc}")
+            else:
+                await _log(db, scan_id, "web_nikto", "warning",
+                           "  [!] Docker not available in WSL2 — skipping Nikto scan")
+
+            _phase_timings["web_nikto"] = round((datetime.now(timezone.utc) - _t_nikto).total_seconds(), 1)
             await web_service.persist_findings(db, scan_id, _all_web, _host, _port, _scheme)
-            _web_results = web_service.make_summary(_resp, web_url, _all_web)
+            _web_results = web_service.make_summary(
+                _resp, web_url, _all_web,
+                ssl_info=_ssl_info if _scheme == "https" else None,
+                spider_urls=list(dict.fromkeys(_spider_urls)),
+                phase_timings=_phase_timings,
+            )
             await db.scans.update_one(
                 {"_id": ObjectId(scan_id)},
                 {"$set": {"web_results": _web_results, "updated_at": datetime.now(timezone.utc)}},
             )
-            await _log(db, scan_id, "web_zap", "success",
+            await _log(db, scan_id, "web_nikto", "success",
                        f"  [+] Web assessment complete — {len(_all_web)} total finding(s)")
 
-        # ── Phase 4: Exploit Analysis ─────────────────────────────────────────
+        # ── Phase 4: Exploit Intelligence & Analysis (Module 3) ──────────────
         if scan_type in (ScanType.VULNERABILITY.value, ScanType.FULL.value):
+            from app.services import exploit_service, metasploit_index
+
             await _set_phase(db, scan_id, "exploit_analysis")
             await _log(db, scan_id, "exploit_analysis", "cmd",
-                       "> securex-exploit --check-kev --check-epss --source nvd")
+                       "> securex-exploit --classify --msf-lookup --cvss-vector --feasibility")
             await _log(db, scan_id, "exploit_analysis", "info",
-                       "  Cross-referencing CISA Known Exploited Vulnerabilities list...")
+                       "  Loading Metasploit module index (rapid7 metadata, search-only)...")
 
-            exploit_count = 0
-            cursor = db.vulnerabilities.find(
-                {"scan_id": scan_id, "exploit_available": True}
-            ).sort("cvss_score", -1)
-            async for v in cursor:
-                exploit_count += 1
+            # Make sure the MSF metadata cache is loaded before analysis starts.
+            try:
+                idx = await metasploit_index.get_index()
+                if idx.is_ready():
+                    await _log(db, scan_id, "exploit_analysis", "info",
+                               f"  Indexed {idx.total_modules} Metasploit modules "
+                               f"covering {idx.indexed_cves} CVEs "
+                               f"(cache age {idx.source_age_days:.1f}d)")
+                else:
+                    await _log(db, scan_id, "exploit_analysis", "warning",
+                               "  [!] Metasploit metadata unavailable — skipping module lookup")
+            except Exception as _msf_exc:
+                await _log(db, scan_id, "exploit_analysis", "warning",
+                           f"  [!] Metasploit index load failed: {_msf_exc}")
+
+            await _log(db, scan_id, "exploit_analysis", "info",
+                       "  Classifying findings (RCE / auth-bypass / info-disclosure / misconfig / DoS)...")
+            await _log(db, scan_id, "exploit_analysis", "info",
+                       "  Parsing CVSS vectors for AC / PR / AV / UI...")
+            await _log(db, scan_id, "exploit_analysis", "info",
+                       "  Computing composite feasibility score (non-intrusive simulation)...")
+
+            try:
+                summary = await exploit_service.analyse_scan_exploits(db, scan_id)
+            except Exception as _exp_exc:
                 await _log(db, scan_id, "exploit_analysis", "error",
-                           f"  [!] {v['cve_id']}  CVSS:{v['cvss_score']}  — exploit available")
+                           f"  [ERROR] Exploit analysis failed: {_exp_exc}")
+                summary = None
 
-            if exploit_count:
-                await _log(db, scan_id, "exploit_analysis", "error",
-                           f"  [!] {exploit_count} active exploit(s) found — immediate patching required")
-            else:
-                await _log(db, scan_id, "exploit_analysis", "success",
-                           "  [+] No active exploits found for discovered CVEs")
+            if summary:
+                await _log(db, scan_id, "exploit_analysis", "info",
+                           f"  Analysed {summary.total_analysed} CVE(s); "
+                           f"{summary.vulns_with_msf} have a Metasploit match "
+                           f"({summary.msf_modules_found} module hits total).")
 
+                # Feasibility-bucket breakdown (most-feasible first)
+                for label in ("trivial", "easy", "moderate", "hard", "theoretical"):
+                    n = summary.by_label.get(label, 0)
+                    if n:
+                        lvl = "error" if label in ("trivial", "easy") else "warning" if label == "moderate" else "info"
+                        await _log(db, scan_id, "exploit_analysis", lvl,
+                                   f"  {label.upper():<12} ×{n}")
+
+                # Category breakdown
+                if summary.by_category:
+                    parts = []
+                    for cat in ("rce", "auth_bypass", "info_disclosure", "misconfiguration", "dos", "other"):
+                        n = summary.by_category.get(cat, 0)
+                        if n:
+                            parts.append(f"{cat}={n}")
+                    if parts:
+                        await _log(db, scan_id, "exploit_analysis", "info",
+                                   "  Categories: " + ", ".join(parts))
+
+                # Top-5 most-feasible findings
+                for top in summary.top_findings:
+                    tag = "  [!]" if top["feasibility_label"] in ("trivial", "easy") else "  [.]"
+                    extra = ""
+                    if top["metasploit_module_count"]:
+                        extra = f"  msf×{top['metasploit_module_count']}"
+                    await _log(db, scan_id, "exploit_analysis", "error" if "!" in tag else "warning",
+                               f"{tag} {top['cve_id']}  feasibility={top['feasibility_score']:.0f} "
+                               f"({top['feasibility_label']}){extra}")
+
+                if summary.total_analysed and summary.by_label.get("trivial", 0) + summary.by_label.get("easy", 0) > 0:
+                    await _log(db, scan_id, "exploit_analysis", "error",
+                               "  [!] Trivial/easy exploits exist — prioritise patching these immediately.")
+                elif summary.total_analysed:
+                    await _log(db, scan_id, "exploit_analysis", "success",
+                               "  [+] No trivial-feasibility paths found.")
+                else:
+                    await _log(db, scan_id, "exploit_analysis", "info",
+                               "  No CVEs to analyse (no service-correlated vulnerabilities).")
+
+            # Keep the legacy counter so existing UI summaries still resolve.
+            exploit_count = await db.vulnerabilities.count_documents({
+                "scan_id": scan_id,
+                "exploit_available": True,
+            })
             await db.scans.update_one(
                 {"_id": ObjectId(scan_id)},
-                {"$set": {"exploit_count": exploit_count, "updated_at": datetime.now(timezone.utc)}},
+                {"$set": {
+                    "exploit_count": exploit_count,
+                    "exploit_summary": (
+                        {
+                            "total_analysed":      summary.total_analysed,
+                            "msf_modules_found":   summary.msf_modules_found,
+                            "vulns_with_msf":      summary.vulns_with_msf,
+                            "by_label":            summary.by_label,
+                            "by_category":         summary.by_category,
+                            "top_findings":        summary.top_findings,
+                        }
+                        if summary else None
+                    ),
+                    "updated_at": datetime.now(timezone.utc),
+                }},
             )
 
         # ── Phase 5: Risk Scoring ─────────────────────────────────────────────
         await _set_phase(db, scan_id, "risk_scoring")
         await _log(db, scan_id, "risk_scoring", "cmd",
-                   "> securex-risk --cvss-v3 --environmental --composite")
+                   "> securex-risk --cvss-v3 --kev --exploit-weight --exposure --cia")
         await _log(db, scan_id, "risk_scoring", "info",
-                   "  Applying CVSS v3.1 environmental scoring...")
+                   "  Applying CVSS v3.1 baseline severity...")
+        await _log(db, scan_id, "risk_scoring", "info",
+                   "  Folding in exploit availability (CISA KEV + EPSS + Metasploit)...")
+        await _log(db, scan_id, "risk_scoring", "info",
+                   "  Classifying service exposure (internal vs external)...")
+        await _log(db, scan_id, "risk_scoring", "info",
+                   "  Aggregating CIA-triad impact across findings...")
 
-        risk_summary = await risk_service.compute_risk_summary(db, scan_id)
+        risk_summary = await risk_service.compute_risk_summary(db, scan_id, target)
 
         if risk_summary and risk_summary.get("total", 0) > 0:
             crit  = risk_summary.get("critical", 0)
@@ -462,9 +661,26 @@ async def _execute_scan(scan_id: str) -> None:
             low   = risk_summary.get("low", 0)
             max_s = risk_summary.get("max_cvss_score", 0)
             risk  = risk_summary.get("overall_risk", "info").upper()
+            base  = risk_summary.get("baseline_risk", "info").upper()
+            kev   = risk_summary.get("kev_count", 0)
+            xploits = risk_summary.get("exploit_count", 0)
+            expo  = (risk_summary.get("exposure") or "unknown").upper()
+            cia   = risk_summary.get("cia_high", {}) or {}
+
             await _log(db, scan_id, "risk_scoring", "info",
                        f"  Critical ×{crit}  High ×{high}  Medium ×{med}  Low ×{low}")
-            await _log(db, scan_id, "risk_scoring", "info", f"  Max CVSS Score: {max_s}")
+            await _log(db, scan_id, "risk_scoring", "info",
+                       f"  Max CVSS: {max_s}  ·  Baseline severity: {base}")
+            await _log(db, scan_id, "risk_scoring", "info",
+                       f"  Exposure: {expo}  ·  KEV: {kev}  ·  Public exploits: {xploits}")
+            await _log(db, scan_id, "risk_scoring", "info",
+                       f"  CIA-high impact — C:{cia.get('confidentiality', 0)}  "
+                       f"I:{cia.get('integrity', 0)}  A:{cia.get('availability', 0)}")
+
+            for reason in risk_summary.get("escalation_reasons", []):
+                await _log(db, scan_id, "risk_scoring", "warning",
+                           f"  [!] Risk escalated: {reason}")
+
             await _log(db, scan_id, "risk_scoring",
                        "error" if risk in ("CRITICAL", "HIGH") else "success",
                        f"  [!] Composite Risk Score: {risk}")

@@ -37,13 +37,30 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
+  // Password-policy checklist — mirrors server/app/schemas/user.py validate_strong_password
+  const pw = form.password
+  const rules = [
+    { ok: pw.length >= 12,         label: '≥ 12 characters' },
+    { ok: /[a-z]/.test(pw),        label: 'lowercase' },
+    { ok: /[A-Z]/.test(pw),        label: 'uppercase' },
+    { ok: /\d/.test(pw),           label: 'digit' },
+    { ok: /[^a-zA-Z0-9]/.test(pw), label: 'special char' },
+  ]
+  const allRulesPass = rules.every(r => r.ok)
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
+  const formValid = form.full_name && form.username && emailValid && allRulesPass
+
   const submit = async () => {
     if (!form.full_name || !form.username || !form.email || !form.password) {
       setError('All fields are required.'); return
     }
+    if (!emailValid)  { setError('Please enter a valid email address.'); return }
+    const broken = rules.find(r => !r.ok)
+    if (broken)       { setError(`Password requirement missing: ${broken.label}`); return }
+
     setLoading(true); setError('')
     try {
-      await api.auth.register(form)
+      await api.admin.createUser(form)
       onCreated(); onClose()
     } catch (e: any) {
       setError(e.message ?? 'Failed to create user')
@@ -77,7 +94,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
             { key: 'full_name', label: 'Full Name', placeholder: 'John Doe' },
             { key: 'username',  label: 'Username',  placeholder: 'johndoe' },
             { key: 'email',     label: 'Email',     placeholder: 'john@securex.pro' },
-            { key: 'password',  label: 'Password',  placeholder: '••••••••', type: 'password' },
+            { key: 'password',  label: 'Password',  placeholder: 'Minimum 12 chars, mixed', type: 'password' },
           ].map(f => (
             <div key={f.key}>
               <label style={labelStyle}>{f.label}</label>
@@ -85,6 +102,27 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
                 value={(form as any)[f.key]}
                 onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                 style={inputStyle} />
+              {f.key === 'email' && form.email && !emailValid && (
+                <div style={{ marginTop: 6, fontSize: 10.5, fontFamily: 'var(--font-mono)', color: '#ff3355' }}>
+                  Enter a valid email (e.g. name@domain.com)
+                </div>
+              )}
+              {f.key === 'password' && form.password.length > 0 && (
+                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {rules.map(r => (
+                    <span key={r.label} style={{
+                      fontSize: 10, fontFamily: 'var(--font-mono)',
+                      padding: '3px 8px', borderRadius: 999,
+                      background: r.ok ? 'rgba(0,204,136,0.10)' : 'rgba(255,51,85,0.08)',
+                      color: r.ok ? '#00cc88' : '#ff7a8a',
+                      border: `1px solid ${r.ok ? 'rgba(0,204,136,0.25)' : 'rgba(255,51,85,0.20)'}`,
+                      letterSpacing: '0.3px',
+                    }}>
+                      {r.ok ? '✓' : '○'} {r.label}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
 
@@ -104,8 +142,15 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
           <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
             <button onClick={onClose} style={{ flex: 1, padding: '12px', borderRadius: 9, background: 'transparent', border: '1px solid var(--border-subtle)', color: 'var(--text-fainter)', fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-            <button onClick={submit} disabled={loading}
-              style={{ flex: 2, padding: '12px', borderRadius: 9, background: loading ? 'rgba(0,229,204,0.4)' : 'var(--accent)', border: 'none', color: '#000', fontSize: 13, fontFamily: 'var(--font-display)', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer' }}>
+            <button onClick={submit} disabled={loading || !formValid}
+              style={{
+                flex: 2, padding: '12px', borderRadius: 9,
+                background: (loading || !formValid) ? 'rgba(0,229,204,0.4)' : 'var(--accent)',
+                border: 'none', color: '#000', fontSize: 13,
+                fontFamily: 'var(--font-display)', fontWeight: 700,
+                cursor: (loading || !formValid) ? 'not-allowed' : 'pointer',
+                opacity: (loading || !formValid) ? 0.7 : 1,
+              }}>
               {loading ? 'Creating…' : 'Create User'}
             </button>
           </div>

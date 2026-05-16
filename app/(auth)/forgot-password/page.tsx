@@ -6,10 +6,10 @@ import {
   ArrowLeft,
   Loader2,
   ShieldAlert,
-  Send,
+  Sparkles,
   CheckCircle2,
   Lock,
-  MailCheck,
+  Link2,
   KeyRound,
   ShieldCheck,
   Fingerprint,
@@ -26,9 +26,39 @@ const STEPS: {
   icon: React.ElementType;
 }[] = [
   { id: 1, label: "Identify", sub: "Confirm your account", icon: Fingerprint },
-  { id: 2, label: "Verify", sub: "Check your inbox", icon: MailCheck },
+  { id: 2, label: "Link", sub: "Open the reset link", icon: Link2 },
   { id: 3, label: "Reset", sub: "Set a new passkey", icon: KeyRound },
 ];
+
+// Theme-aware tone helpers — resolve to cyan in dark mode, Signal Blue in light.
+// Used on the right-hand form so it reads naturally against either theme.
+const ACCENT_5 = "color-mix(in srgb, var(--accent)  5%, transparent)";
+const ACCENT_8 = "color-mix(in srgb, var(--accent)  8%, transparent)";
+const ACCENT_10 = "color-mix(in srgb, var(--accent) 10%, transparent)";
+const ACCENT_14 = "color-mix(in srgb, var(--accent) 14%, transparent)";
+const ACCENT_18 = "color-mix(in srgb, var(--accent) 18%, transparent)";
+const ACCENT_25 = "color-mix(in srgb, var(--accent) 25%, transparent)";
+const ACCENT_30 = "color-mix(in srgb, var(--accent) 30%, transparent)";
+const ACCENT_40 = "color-mix(in srgb, var(--accent) 40%, transparent)";
+const ACCENT_50 = "color-mix(in srgb, var(--accent) 50%, transparent)";
+
+// Brand-cyan literals — used by the left "Recovery Console" panel and the
+// submit button, both of which stay cyan in BOTH themes for brand identity.
+const CYAN = "#00e5cc";
+const CYAN_DEEP = "#00b3a1"; // darker shade for text/strong accents
+const CYAN_ON = "#04110e"; // near-black, sits on cyan surfaces
+const CYAN_5 = "rgba(0,229,204,0.05)";
+const CYAN_8 = "rgba(0,229,204,0.08)";
+const CYAN_10 = "rgba(0,229,204,0.10)";
+const CYAN_14 = "rgba(0,229,204,0.14)";
+const CYAN_18 = "rgba(0,229,204,0.18)";
+const CYAN_28 = "rgba(0,229,204,0.28)";
+const CYAN_30 = "rgba(0,229,204,0.30)";
+const CYAN_40 = "rgba(0,229,204,0.40)";
+const CYAN_45 = "rgba(0,229,204,0.45)";
+const CYAN_50 = "rgba(0,229,204,0.50)";
+const CYAN_GLOW = "rgba(0,229,204,0.42)";
+const CYAN_GLOW_SOFT = "rgba(0,229,204,0.20)";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -62,11 +92,13 @@ export default function ForgotPasswordPage() {
   return (
     <div
       style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "40px 24px",
+        // Globals.css sets `body { overflow: hidden }` for the app-shell, so we
+        // have to be our own scroll container here. `height: 100vh` pins us to
+        // the viewport and `overflowY: auto` lets the card scroll past the
+        // bottom edge on shorter screens or wider zoom levels.
+        height: "100vh",
+        overflowY: "auto",
+        padding: "70px 24px 60px",
         background: "var(--bg-base)",
         color: "var(--text-body)",
         fontFamily: "var(--font-ui)",
@@ -74,7 +106,7 @@ export default function ForgotPasswordPage() {
         transition: "background-color .25s ease",
       }}
     >
-      {/* Ambient background */}
+      {/* Ambient background (theme-aware tints from globals.css) */}
       <div
         style={{
           position: "fixed",
@@ -103,7 +135,7 @@ export default function ForgotPasswordPage() {
             width: "55vw",
             height: "55vw",
             background:
-              "radial-gradient(circle, var(--tint-purple) 0%, transparent 65%)",
+              "radial-gradient(circle, var(--tint-blue) 0%, transparent 65%)",
             filter: "blur(80px)",
           }}
         />
@@ -118,18 +150,18 @@ export default function ForgotPasswordPage() {
               "radial-gradient(ellipse at center, #000 30%, transparent 75%)",
             WebkitMaskImage:
               "radial-gradient(ellipse at center, #000 30%, transparent 75%)",
-            opacity: 0.4,
+            opacity: 0.35,
           }}
         />
       </div>
 
-      {/* Back link (top-left) */}
+      {/* Back link — sticky to viewport, so it stays accessible during scroll */}
       <Link
         href="/login"
         style={{
-          position: "absolute",
-          top: 28,
-          left: 28,
+          position: "fixed",
+          top: 22,
+          left: 22,
           zIndex: 20,
           display: "inline-flex",
           alignItems: "center",
@@ -146,9 +178,10 @@ export default function ForgotPasswordPage() {
           textDecoration: "none",
           boxShadow: "var(--card-shadow)",
           transition: "all 0.2s ease",
+          backdropFilter: "blur(8px)",
         }}
         onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
-          e.currentTarget.style.borderColor = "rgba(0,229,204,0.45)";
+          e.currentTarget.style.borderColor = ACCENT_50;
           e.currentTarget.style.color = "var(--accent-text)";
           e.currentTarget.style.transform = "translateX(-2px)";
         }}
@@ -163,13 +196,15 @@ export default function ForgotPasswordPage() {
 
       {/* Main split card */}
       <div
+        className="recovery-grid"
         style={{
           width: "100%",
-          maxWidth: 920,
+          maxWidth: 940,
+          margin: "0 auto",
           position: "relative",
           zIndex: 10,
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.1fr)",
+          gridTemplateColumns: "minmax(0, 0.95fr) minmax(0, 1.05fr)",
           background: "var(--surface-1)",
           border: "1px solid var(--border-default)",
           borderRadius: 24,
@@ -177,21 +212,18 @@ export default function ForgotPasswordPage() {
           boxShadow: "var(--card-shadow-strong)",
           animation: "card-rise 0.7s cubic-bezier(0.16,1,0.3,1)",
         }}
-        className="recovery-grid"
       >
         {/* LEFT: recovery flow visualization */}
         <aside
           style={{
             position: "relative",
-            padding: "40px 36px",
+            padding: "44px 36px",
             background:
               "linear-gradient(160deg, var(--surface-2), var(--surface-1))",
             borderRight: "1px solid var(--border-subtle)",
             display: "flex",
             flexDirection: "column",
-            justifyContent: "space-between",
-            gap: 24,
-            minHeight: 540,
+            gap: 28,
             overflow: "hidden",
           }}
         >
@@ -203,9 +235,9 @@ export default function ForgotPasswordPage() {
               gap: 8,
               padding: "6px 12px",
               borderRadius: 999,
-              background: "rgba(0,229,204,0.10)",
-              border: "1px solid rgba(0,229,204,0.30)",
-              color: "var(--accent-text)",
+              background: CYAN_10,
+              border: `1px solid ${CYAN_30}`,
+              color: CYAN_DEEP,
               fontFamily: "var(--font-mono)",
               fontSize: 10,
               fontWeight: 700,
@@ -221,7 +253,7 @@ export default function ForgotPasswordPage() {
           <div
             style={{
               position: "relative",
-              margin: "0 auto",
+              margin: "8px auto 4px",
               width: 200,
               height: 200,
             }}
@@ -234,8 +266,8 @@ export default function ForgotPasswordPage() {
             >
               <defs>
                 <radialGradient id="lockGlow" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="rgba(0,229,204,0.18)" />
-                  <stop offset="100%" stopColor="rgba(0,229,204,0)" />
+                  <stop offset="0%" stopColor={CYAN} stopOpacity="0.18" />
+                  <stop offset="100%" stopColor={CYAN} stopOpacity="0" />
                 </radialGradient>
               </defs>
               <circle cx="100" cy="100" r="95" fill="url(#lockGlow)" />
@@ -250,11 +282,12 @@ export default function ForgotPasswordPage() {
                   cy="100"
                   r="90"
                   fill="none"
-                  stroke="rgba(0,229,204,0.18)"
+                  stroke={CYAN}
+                  strokeOpacity="0.18"
                   strokeWidth="1"
                   strokeDasharray="3 9"
                 />
-                <circle cx="100" cy="10" r="3" fill="#00e5cc" />
+                <circle cx="100" cy="10" r="3" fill={CYAN} />
               </g>
               <g
                 style={{
@@ -267,33 +300,34 @@ export default function ForgotPasswordPage() {
                   cy="100"
                   r="72"
                   fill="none"
-                  stroke="rgba(0,229,204,0.28)"
+                  stroke={CYAN}
+                  strokeOpacity="0.28"
                   strokeWidth="1"
                   strokeDasharray="2 6"
                 />
-                <circle cx="100" cy="28" r="2.5" fill="#00e5cc" opacity="0.9" />
-                <circle
-                  cx="172"
-                  cy="100"
-                  r="2.5"
-                  fill="#00e5cc"
-                  opacity="0.9"
-                />
-                <circle
-                  cx="100"
-                  cy="172"
-                  r="2.5"
-                  fill="#00e5cc"
-                  opacity="0.9"
-                />
-                <circle cx="28" cy="100" r="2.5" fill="#00e5cc" opacity="0.9" />
+                {[
+                  [100, 28],
+                  [172, 100],
+                  [100, 172],
+                  [28, 100],
+                ].map(([cx, cy], i) => (
+                  <circle
+                    key={i}
+                    cx={cx}
+                    cy={cy}
+                    r="2.5"
+                    fill={CYAN}
+                    opacity="0.9"
+                  />
+                ))}
               </g>
               <circle
                 cx="100"
                 cy="100"
                 r="52"
                 fill="none"
-                stroke="rgba(0,229,204,0.40)"
+                stroke={CYAN}
+                strokeOpacity="0.40"
                 strokeWidth="1.2"
               />
             </svg>
@@ -312,34 +346,32 @@ export default function ForgotPasswordPage() {
                   width: 90,
                   height: 90,
                   borderRadius: 24,
-                  background:
-                    "linear-gradient(135deg, rgba(0,229,204,0.18), rgba(0,229,204,0.04))",
-                  border: "1px solid rgba(0,229,204,0.45)",
+                  background: `linear-gradient(135deg, ${CYAN_18}, ${CYAN_5})`,
+                  border: `1px solid ${CYAN_40}`,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  boxShadow:
-                    "0 0 40px var(--glow-accent-soft), inset 0 0 20px rgba(0,229,204,0.10)",
+                  boxShadow: `0 0 40px ${CYAN_GLOW_SOFT}, inset 0 0 20px ${CYAN_10}`,
                   animation: "lock-float 4.5s ease-in-out infinite",
                 }}
               >
                 {currentStep === 1 && (
                   <Lock
                     size={36}
-                    color="#00e5cc"
+                    color={CYAN}
                     strokeWidth={1.6}
                     style={{
-                      filter: "drop-shadow(0 0 10px rgba(0,229,204,0.55))",
+                      filter: `drop-shadow(0 0 10px ${CYAN_GLOW})`,
                     }}
                   />
                 )}
                 {currentStep === 2 && (
-                  <MailCheck
+                  <Link2
                     size={38}
-                    color="#00e5cc"
+                    color={CYAN}
                     strokeWidth={1.6}
                     style={{
-                      filter: "drop-shadow(0 0 10px rgba(0,229,204,0.55))",
+                      filter: `drop-shadow(0 0 10px ${CYAN_GLOW})`,
                       animation: "icon-pop .5s ease",
                     }}
                   />
@@ -354,6 +386,7 @@ export default function ForgotPasswordPage() {
               display: "flex",
               flexDirection: "column",
               position: "relative",
+              marginTop: 4,
             }}
           >
             <div
@@ -385,9 +418,8 @@ export default function ForgotPasswordPage() {
                 style={{
                   width: "100%",
                   borderRadius: 1,
-                  background:
-                    "linear-gradient(180deg, var(--accent-text), #00e5cc)",
-                  boxShadow: "0 0 8px var(--glow-accent-soft)",
+                  background: `linear-gradient(180deg, ${CYAN_DEEP}, ${CYAN})`,
+                  boxShadow: `0 0 8px ${CYAN_GLOW_SOFT}`,
                   height:
                     currentStep === 1
                       ? "0%"
@@ -413,7 +445,7 @@ export default function ForgotPasswordPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 14,
-                    padding: "8px 0",
+                    padding: "9px 0",
                     position: "relative",
                     zIndex: 1,
                   }}
@@ -427,35 +459,33 @@ export default function ForgotPasswordPage() {
                       position: "relative",
                       background:
                         state === "done"
-                          ? "linear-gradient(135deg, #00e5cc, #00b3a1)"
+                          ? CYAN
                           : state === "active"
-                            ? "rgba(0,229,204,0.14)"
+                            ? CYAN_14
                             : "var(--surface-3)",
                       border:
                         state === "pending"
                           ? "1px solid var(--border-default)"
-                          : "2px solid rgba(0,229,204,0.5)",
+                          : `2px solid ${CYAN_50}`,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       boxShadow:
-                        state === "active"
-                          ? "0 0 0 5px rgba(0,229,204,0.08)"
-                          : "none",
+                        state === "active" ? `0 0 0 5px ${CYAN_8}` : "none",
                       transition: "all .3s",
                     }}
                   >
                     {state === "done" ? (
                       <CheckCircle2
                         size={16}
-                        color="#04110e"
+                        color={CYAN_ON}
                         strokeWidth={2.5}
                       />
                     ) : (
                       <Icon
                         size={14}
                         color={
-                          state === "active" ? "#00e5cc" : "var(--text-fainter)"
+                          state === "active" ? CYAN : "var(--text-fainter)"
                         }
                       />
                     )}
@@ -465,7 +495,7 @@ export default function ForgotPasswordPage() {
                           position: "absolute",
                           inset: 0,
                           borderRadius: "50%",
-                          border: "2px solid rgba(0,229,204,0.45)",
+                          border: `2px solid ${CYAN_50}`,
                           animation: "step-pulse 2s ease-out infinite",
                         }}
                       />
@@ -508,9 +538,9 @@ export default function ForgotPasswordPage() {
                         fontSize: 9,
                         padding: "3px 8px",
                         borderRadius: 999,
-                        background: "rgba(0,229,204,0.12)",
-                        color: "var(--accent-text)",
-                        border: "1px solid rgba(0,229,204,0.30)",
+                        background: CYAN_14,
+                        color: CYAN_DEEP,
+                        border: `1px solid ${CYAN_30}`,
                         fontFamily: "var(--font-mono)",
                         fontWeight: 700,
                         letterSpacing: "0.7px",
@@ -522,7 +552,7 @@ export default function ForgotPasswordPage() {
                           width: 4,
                           height: 4,
                           borderRadius: "50%",
-                          background: "#00e5cc",
+                          background: CYAN,
                           marginRight: 5,
                           verticalAlign: "middle",
                           animation: "blip 1s infinite",
@@ -544,13 +574,14 @@ export default function ForgotPasswordPage() {
               gap: 10,
               padding: "12px 14px",
               borderRadius: 10,
-              background: "rgba(0,229,204,0.05)",
-              border: "1px solid rgba(0,229,204,0.18)",
+              background: CYAN_5,
+              border: `1px solid ${CYAN_18}`,
+              marginTop: "auto",
             }}
           >
             <Clock
               size={13}
-              color="var(--accent-text)"
+              color={CYAN_DEEP}
               style={{ flexShrink: 0, marginTop: 1 }}
             />
             <span
@@ -562,10 +593,8 @@ export default function ForgotPasswordPage() {
               }}
             >
               Reset links expire after{" "}
-              <strong style={{ color: "var(--accent-text)" }}>
-                15 minutes
-              </strong>{" "}
-              for your security.
+              <strong style={{ color: CYAN_DEEP }}>60 minutes</strong> for your
+              security.
             </span>
           </div>
         </aside>
@@ -573,7 +602,7 @@ export default function ForgotPasswordPage() {
         {/* RIGHT: form column */}
         <main
           style={{
-            padding: "44px 40px",
+            padding: "48px 44px",
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
@@ -587,8 +616,7 @@ export default function ForgotPasswordPage() {
               left: "10%",
               right: "10%",
               height: 1,
-              background:
-                "linear-gradient(90deg, transparent, rgba(0,229,204,0.55), transparent)",
+              background: `linear-gradient(90deg, transparent, ${ACCENT_50}, transparent)`,
             }}
           />
 
@@ -633,7 +661,7 @@ export default function ForgotPasswordPage() {
                   }}
                 >
                   Enter the email tied to your SecureX Pro account and
-                  we&apos;ll send you a one-time recovery link.
+                  we&apos;ll generate a one-time recovery link for you to use.
                 </p>
               </div>
 
@@ -672,7 +700,7 @@ export default function ForgotPasswordPage() {
                         style={{
                           transition: "color 0.3s",
                           filter: email
-                            ? "drop-shadow(0 0 6px rgba(0,229,204,0.45))"
+                            ? "drop-shadow(0 0 6px var(--glow-accent-soft))"
                             : "none",
                         }}
                       />
@@ -697,10 +725,8 @@ export default function ForgotPasswordPage() {
                         transition: "all 0.25s",
                       }}
                       onFocus={(e) => {
-                        e.currentTarget.style.borderColor =
-                          "rgba(0,229,204,0.55)";
-                        e.currentTarget.style.boxShadow =
-                          "0 0 0 4px rgba(0,229,204,0.1)";
+                        e.currentTarget.style.borderColor = ACCENT_50;
+                        e.currentTarget.style.boxShadow = `0 0 0 4px var(--accent-dim)`;
                       }}
                       onBlur={(e) => {
                         e.currentTarget.style.borderColor =
@@ -717,9 +743,11 @@ export default function ForgotPasswordPage() {
                       padding: "12px 14px",
                       borderRadius: 10,
                       marginBottom: 16,
-                      background: "rgba(255,51,85,0.08)",
-                      border: "1px solid rgba(255,51,85,0.25)",
-                      color: "#ff3355",
+                      background:
+                        "color-mix(in srgb, var(--critical) 8%, transparent)",
+                      border:
+                        "1px solid color-mix(in srgb, var(--critical) 25%, transparent)",
+                      color: "var(--critical)",
                       fontFamily: "var(--font-mono)",
                       fontSize: 12,
                       display: "flex",
@@ -744,6 +772,8 @@ export default function ForgotPasswordPage() {
                     padding: "15px 0",
                     borderRadius: 12,
                     border: "none",
+                    // Brand-defining button — locked to cyan in BOTH modes
+                    // (intentionally bypasses var(--accent) which shifts to Signal Blue in light).
                     background: loading
                       ? "var(--surface-3)"
                       : "linear-gradient(135deg, #00e5cc, #00b3a1)",
@@ -759,7 +789,7 @@ export default function ForgotPasswordPage() {
                     gap: 10,
                     boxShadow: loading
                       ? "none"
-                      : "0 8px 28px var(--glow-accent), 0 0 0 1px rgba(0,229,204,.5) inset",
+                      : "0 8px 28px rgba(0,229,204,0.42), 0 0 0 1px rgba(0,229,204,0.5) inset",
                     position: "relative",
                     overflow: "hidden",
                     letterSpacing: "0.3px",
@@ -768,14 +798,14 @@ export default function ForgotPasswordPage() {
                     if (!loading) {
                       e.currentTarget.style.transform = "translateY(-1px)";
                       e.currentTarget.style.boxShadow =
-                        "0 14px 36px var(--glow-accent), 0 0 0 1px rgba(0,229,204,.6) inset";
+                        "0 14px 36px rgba(0,229,204,0.55), 0 0 0 1px rgba(0,229,204,0.6) inset";
                     }
                   }}
                   onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
                     e.currentTarget.style.transform = "translateY(0)";
                     e.currentTarget.style.boxShadow = loading
                       ? "none"
-                      : "0 8px 28px var(--glow-accent), 0 0 0 1px rgba(0,229,204,.5) inset";
+                      : "0 8px 28px rgba(0,229,204,0.42), 0 0 0 1px rgba(0,229,204,0.5) inset";
                   }}
                 >
                   {!loading && (
@@ -805,11 +835,11 @@ export default function ForgotPasswordPage() {
                           size={17}
                           style={{ animation: "spin 1s linear infinite" }}
                         />{" "}
-                        Dispatching link…
+                        Generating link…
                       </>
                     ) : (
                       <>
-                        <Send size={16} /> Send Recovery Link
+                        <Sparkles size={16} /> Generate Recovery Link
                       </>
                     )}
                   </span>
@@ -877,7 +907,7 @@ export default function ForgotPasswordPage() {
                     marginBottom: 10,
                   }}
                 >
-                  Recovery link dispatched
+                  Recovery link generated
                 </h1>
                 <p
                   style={{
@@ -893,19 +923,20 @@ export default function ForgotPasswordPage() {
               {result.reset_token && (
                 <div
                   style={{
-                    background: "rgba(0,229,204,0.05)",
-                    border: "1px solid rgba(0,229,204,0.20)",
+                    background: ACCENT_5,
+                    border: `1px solid ${ACCENT_25}`,
                     borderRadius: 12,
-                    padding: 16,
+                    padding: 20,
                     marginBottom: 18,
+                    textAlign: "center",
                   }}
                 >
                   <div
                     style={{
-                      display: "flex",
+                      display: "inline-flex",
                       alignItems: "center",
                       gap: 8,
-                      marginBottom: 8,
+                      marginBottom: 12,
                     }}
                   >
                     <KeyRound size={12} color="var(--accent-text)" />
@@ -920,20 +951,20 @@ export default function ForgotPasswordPage() {
                         fontWeight: 700,
                       }}
                     >
-                      Demo — Reset Token
+                      Reset link generated
                     </p>
                   </div>
                   <p
                     style={{
+                      fontSize: 12,
                       fontFamily: "var(--font-mono)",
-                      fontSize: 11,
-                      color: "var(--accent-text)",
-                      wordBreak: "break-all",
-                      lineHeight: 1.65,
-                      margin: "0 0 12px",
+                      color: "var(--text-soft)",
+                      lineHeight: 1.55,
+                      margin: "0 0 16px",
                     }}
                   >
-                    {result.reset_token}
+                    Click below to choose a new password. The link expires in 60
+                    minutes.
                   </p>
                   <Link
                     href={`/reset-password?token=${result.reset_token}`}
@@ -943,27 +974,27 @@ export default function ForgotPasswordPage() {
                       gap: 7,
                       fontFamily: "var(--font-display)",
                       fontSize: 13,
-                      fontWeight: 600,
-                      color: "#04110e",
+                      fontWeight: 700,
+                      color: "var(--accent-on-bg)",
                       textDecoration: "none",
-                      background: "linear-gradient(135deg, #00e5cc, #00b3a1)",
-                      padding: "9px 16px",
+                      background: "var(--accent)",
+                      padding: "11px 22px",
                       borderRadius: 9,
-                      boxShadow: "0 4px 14px var(--glow-accent)",
+                      boxShadow: "0 4px 14px var(--glow-accent-soft)",
                       transition: "all .2s",
                     }}
                     onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
-                      e.currentTarget.style.transform = "translateX(3px)";
+                      e.currentTarget.style.transform = "translateY(-1px)";
                       e.currentTarget.style.boxShadow =
                         "0 6px 20px var(--glow-accent)";
                     }}
                     onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
-                      e.currentTarget.style.transform = "translateX(0)";
+                      e.currentTarget.style.transform = "translateY(0)";
                       e.currentTarget.style.boxShadow =
-                        "0 4px 14px var(--glow-accent)";
+                        "0 4px 14px var(--glow-accent-soft)";
                     }}
                   >
-                    Reset Password Now <span style={{ fontSize: 14 }}>→</span>
+                    Reset password now <span style={{ fontSize: 14 }}>→</span>
                   </Link>
                 </div>
               )}
@@ -990,7 +1021,7 @@ export default function ForgotPasswordPage() {
                   gap: 7,
                 }}
                 onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.currentTarget.style.borderColor = "rgba(0,229,204,0.45)";
+                  e.currentTarget.style.borderColor = ACCENT_50;
                   e.currentTarget.style.color = "var(--accent-text)";
                 }}
                 onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {

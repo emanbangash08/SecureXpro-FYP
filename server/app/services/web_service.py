@@ -16,6 +16,9 @@ Public API (for scan_tasks.py granular phase control):
   check_xss()                         → list[WebFinding]  (async)
   check_csrf()                        → list[WebFinding]  (async)
   check_cookies_on_endpoints()        → list[WebFinding]  (async)
+  check_rate_limiting()               → list[WebFinding]  (async)  [A04]
+  check_subresource_integrity()       → list[WebFinding]            [A08]
+  check_logging_and_monitoring()      → list[WebFinding]  (async)  [A09]
   persist_findings()                  → None  (async)
   make_summary()                      → dict
   run_web_assessment()                → dict  (all-in-one, backward compat)
@@ -189,6 +192,83 @@ _COOKIE_PROBE_ENDPOINTS: list[tuple[str, dict]] = [
     ("/auth/login",        {"email": "probe@test.com",  "password": "probe123"}),
 ]
 
+# ── A04 Insecure Design — Rate Limiting probe ─────────────────────────────────
+
+# Number of rapid-fire requests sent to an auth endpoint to detect rate limits.
+# Kept low and capped by RATE_PROBE_DELAY so we never actually brute-force.
+_RATE_PROBE_COUNT = 6
+_RATE_PROBE_DELAY = 0.15   # seconds between requests
+
+_RATE_LIMIT_HEADERS = (
+    "x-ratelimit-remaining",
+    "x-ratelimit-limit",
+    "x-rate-limit-remaining",
+    "x-rate-limit-limit",
+    "ratelimit-remaining",
+    "retry-after",
+)
+
+# ── A08 Software & Data Integrity — Subresource Integrity probe ───────────────
+
+# External script/link tags pulled in via http(s) origins are candidates for SRI.
+# Same-origin assets and protocol-relative URLs are skipped.
+_HTML_SCRIPT_RE = re.compile(
+    r'<script[^>]*\bsrc\s*=\s*["\']([^"\']+)["\'][^>]*>',
+    re.IGNORECASE,
+)
+_HTML_LINK_RE = re.compile(
+    r'<link[^>]*\brel\s*=\s*["\'](?:stylesheet|preload)["\'][^>]*>',
+    re.IGNORECASE,
+)
+_LINK_HREF_RE = re.compile(r'\bhref\s*=\s*["\']([^"\']+)["\']', re.IGNORECASE)
+_INTEGRITY_RE = re.compile(r'\bintegrity\s*=\s*["\']', re.IGNORECASE)
+
+# ── A09 Logging & Monitoring — Exposed log paths + verbose errors ─────────────
+
+# Common log/monitoring endpoints. Any 200 response is a serious leak.
+_LOG_EXPOSURE_PATHS: list[tuple[str, str, Severity, float]] = [
+    ("/access.log",       "Apache/Nginx access log exposed",      Severity.HIGH,     8.6),
+    ("/error.log",        "Server error log exposed",             Severity.HIGH,     8.6),
+    ("/error_log",        "Server error_log exposed",             Severity.HIGH,     8.6),
+    ("/server.log",       "Application server log exposed",       Severity.HIGH,     8.6),
+    ("/app.log",          "Application log exposed",              Severity.HIGH,     8.6),
+    ("/debug.log",        "Debug log exposed",                    Severity.CRITICAL, 9.1),
+    ("/logs",             "Logs directory listing exposed",       Severity.HIGH,     7.5),
+    ("/logs/",            "Logs directory listing exposed",       Severity.HIGH,     7.5),
+    ("/log.txt",          "Plain-text log file exposed",          Severity.HIGH,     8.6),
+    ("/audit.log",        "Audit log exposed",                    Severity.CRITICAL, 9.1),
+    ("/laravel.log",      "Laravel framework log exposed",        Severity.CRITICAL, 9.1),
+    ("/storage/logs/",    "Laravel storage logs directory",       Severity.CRITICAL, 9.1),
+    ("/metrics",          "Prometheus metrics endpoint exposed",  Severity.MEDIUM,   5.3),
+    ("/health",           "Health endpoint exposed (info leak)",  Severity.LOW,      3.7),
+    ("/healthz",          "Health endpoint exposed (info leak)",  Severity.LOW,      3.7),
+]
+
+# Patterns that indicate a stack trace / verbose framework error in a response body
+_STACK_TRACE_PATTERNS: list[tuple[str, str]] = [
+    ("traceback (most recent call last)", "Python traceback"),
+    ("file \"/", "Python traceback"),
+    ("at java.", "Java stack trace"),
+    ("at sun.", "Java stack trace"),
+    ("at org.springframework.", "Spring stack trace"),
+    ("symfony\\component", "Symfony stack trace"),
+    ("at express", "Express.js stack trace"),
+    ("error: at", "Generic JS stack trace"),
+    ("microsoft .net framework", ".NET framework error page"),
+    ("system.web.httpexception", ".NET HTTP exception"),
+    ("activerecord::", "Rails ActiveRecord error"),
+    ("railties (", "Rails verbose error"),
+    ("django.core.exceptions", "Django exception trace"),
+    ("at line", "Generic stack trace"),
+]
+
+# Payloads designed to trigger verbose error pages — all safe / non-destructive
+_VERBOSE_ERROR_PROBES: list[tuple[str, str]] = [
+    ("/?id[]=array",         "Array parameter coercion error"),
+    ("/?debug=1",            "Debug-mode probe"),
+    ("/nonexistent-%00-path", "Null-byte path probe"),
+]
+
 # ── Public building-block functions ──────────────────────────────────────────
 
 async def connect_to_target(url: str) -> tuple[httpx.AsyncClient, httpx.Response]:
@@ -275,6 +355,42 @@ async def check_cookies_on_endpoints(
     return await _check_cookies_on_endpoints(client, url)
 
 
+async def check_rate_limiting(
+    client: httpx.AsyncClient,
+    url: str,
+) -> list[WebFinding]:
+    """
+    A04 — Insecure Design: probes auth endpoints to detect missing rate limiting.
+    Sends a small burst of requests with random invalid credentials and looks for:
+      - 429 Too Many Requests responses
+      - X-RateLimit-* / Retry-After response headers
+    Absence of both after the burst is reported as a design weakness.
+    """
+    return await _check_rate_limiting(client, url)
+
+
+def check_subresource_integrity(resp: httpx.Response, url: str) -> list[WebFinding]:
+    """
+    A08 — Software & Data Integrity Failures: parses the initial HTML for
+    cross-origin <script src> and <link rel=stylesheet> tags and flags those
+    that lack a Subresource Integrity (SRI) `integrity=` attribute.
+    """
+    return _check_subresource_integrity(resp, url)
+
+
+async def check_logging_and_monitoring(
+    client: httpx.AsyncClient,
+    url: str,
+) -> list[WebFinding]:
+    """
+    A09 — Security Logging & Monitoring Failures:
+      1. Probes a curated list of log/monitoring paths for direct exposure.
+      2. Sends crafted malformed requests and inspects responses for stack
+         traces / verbose framework errors that leak internals.
+    """
+    return await _check_logging_and_monitoring(client, url)
+
+
 async def persist_findings(
     db: AsyncIOMotorDatabase,
     scan_id: str,
@@ -304,20 +420,128 @@ async def persist_findings(
         await db.vulnerabilities.insert_one(doc)
 
 
-def make_summary(resp: httpx.Response, url: str, findings: list[WebFinding]) -> dict:
+def get_ssl_info(host: str, port: int) -> dict:
+    """Return SSL certificate details as a plain dict (no findings)."""
+    import ssl as _ssl
+    try:
+        ctx = _ssl.create_default_context()
+        with socket.create_connection((host, port), timeout=5) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                cert   = ssock.getpeercert()
+                cipher = ssock.cipher()
+        not_after  = cert.get("notAfter", "")
+        not_before = cert.get("notBefore", "")
+        subject    = dict(x[0] for x in cert.get("subject", []))
+        issuer     = dict(x[0] for x in cert.get("issuer", []))
+        days_left: int | None = None
+        if not_after:
+            try:
+                expiry    = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
+                days_left = (expiry - datetime.utcnow()).days
+            except Exception:
+                pass
+        san: list[str] = []
+        for ext in cert.get("subjectAltName", []):
+            if ext[0] == "DNS":
+                san.append(ext[1])
+        return {
+            "valid":              True,
+            "subject_cn":         subject.get("commonName", ""),
+            "issuer_org":         issuer.get("organizationName", ""),
+            "issuer_cn":          issuer.get("commonName", ""),
+            "not_before":         not_before,
+            "not_after":          not_after,
+            "days_until_expiry":  days_left,
+            "san":                san[:8],
+            "cipher":             cipher[0] if cipher else "",
+            "protocol":           cipher[1] if cipher else "",
+            "key_bits":           cipher[2] if cipher else None,
+        }
+    except Exception as exc:
+        return {"valid": False, "error": str(exc)}
+
+
+def _extract_tech_stack(resp: httpx.Response) -> list[dict]:
+    """Fingerprint technologies from response headers."""
+    tech: list[dict] = []
+    h = resp.headers
+
+    server = h.get("server", "")
+    if server:
+        tech.append({"name": server, "category": "Server"})
+
+    powered = h.get("x-powered-by", "")
+    if powered:
+        tech.append({"name": powered, "category": "Framework"})
+
+    # CDN detection
+    if h.get("cf-ray") or h.get("cf-cache-status") or "cloudflare" in server.lower():
+        if not any(t["name"] == "Cloudflare" for t in tech):
+            tech.append({"name": "Cloudflare", "category": "CDN"})
+    if h.get("x-amz-cf-id") or h.get("x-amz-request-id"):
+        tech.append({"name": "Amazon CloudFront", "category": "CDN"})
+    if h.get("x-cache", "").startswith("HIT") and "akamai" in h.get("via", "").lower():
+        tech.append({"name": "Akamai", "category": "CDN"})
+
+    # CMS / frameworks
+    if h.get("x-generator"):
+        tech.append({"name": h["x-generator"], "category": "CMS"})
+    if h.get("x-drupal-cache") or h.get("x-drupal-dynamic-cache"):
+        tech.append({"name": "Drupal", "category": "CMS"})
+    if h.get("x-wp-total") or h.get("x-pingback"):
+        tech.append({"name": "WordPress", "category": "CMS"})
+    if h.get("x-shopify-stage") or h.get("x-shopid"):
+        tech.append({"name": "Shopify", "category": "E-commerce"})
+
+    # Backend frameworks
+    if h.get("x-aspnet-version"):
+        tech.append({"name": f"ASP.NET {h['x-aspnet-version']}", "category": "Framework"})
+    if h.get("x-aspnetmvc-version"):
+        tech.append({"name": f"ASP.NET MVC {h['x-aspnetmvc-version']}", "category": "Framework"})
+
+    # Proxy / LB
+    via = h.get("via", "")
+    if via:
+        tech.append({"name": via, "category": "Proxy/Load Balancer"})
+
+    return tech
+
+
+def make_summary(
+    resp: httpx.Response,
+    url: str,
+    findings: list[WebFinding],
+    ssl_info: dict | None = None,
+    spider_urls: list[str] | None = None,
+    phase_timings: dict | None = None,
+) -> dict:
     parsed = urlparse(url)
+    try:
+        response_time_ms: float | None = round(resp.elapsed.total_seconds() * 1000, 1)
+    except Exception:
+        response_time_ms = None
     return {
-        "url": url,
-        "final_url": str(resp.url),
-        "status_code": resp.status_code,
-        "server": resp.headers.get("server", ""),
-        "https": parsed.scheme == "https",
-        "total_findings": len(findings),
+        "url":              url,
+        "final_url":        str(resp.url),
+        "status_code":      resp.status_code,
+        "server":           resp.headers.get("server", ""),
+        "https":            parsed.scheme == "https",
+        "total_findings":   len(findings),
+        "content_length":   len(resp.content),
+        "response_time_ms": response_time_ms,
+        "tech_stack":       _extract_tech_stack(resp),
+        "ssl_info":         ssl_info or {},
+        "spider_urls":      spider_urls or [],
+        "phase_timings":    phase_timings or {},
         "checks_performed": [
             "headers", "server_disclosure", "cors", "cookies",
             "sensitive_paths", "http_methods",
             "ssl" if parsed.scheme == "https" else "https_redirect",
-            "sql_injection", "xss", "csrf", "zap_active_scan",
+            "sql_injection", "xss", "csrf",
+            "rate_limiting",          # A04
+            "subresource_integrity",  # A08
+            "logging_monitoring",     # A09
+            "zap_active_scan", "nikto_misconfig_scan",
         ],
     }
 
@@ -396,6 +620,21 @@ async def run_web_assessment(
             findings += await check_cookies_on_endpoints(client, url)
         except Exception as exc:
             logger.warning("Cookie endpoint check failed: %s", exc)
+
+        try:
+            findings += await check_rate_limiting(client, url)
+        except Exception as exc:
+            logger.warning("Rate limiting check failed: %s", exc)
+
+        try:
+            findings += check_subresource_integrity(resp, url)
+        except Exception as exc:
+            logger.warning("SRI check failed: %s", exc)
+
+        try:
+            findings += await check_logging_and_monitoring(client, url)
+        except Exception as exc:
+            logger.warning("Logging/Monitoring check failed: %s", exc)
 
     await persist_findings(db, scan_id, findings, host, port, parsed.scheme)
     return make_summary(resp, url, findings)
@@ -814,6 +1053,293 @@ async def _check_cookies_on_endpoints(
             continue
 
     return []
+
+
+async def _check_rate_limiting(
+    client: httpx.AsyncClient,
+    url: str,
+) -> list[WebFinding]:
+    """
+    A04 — Insecure Design: rate limiting absent on authentication endpoints.
+
+    Strategy:
+      • For each candidate auth endpoint, send N rapid requests with random
+        invalid credentials.
+      • Record per-response: status code + rate-limit headers.
+      • If no 429/Retry-After/X-RateLimit-* appears across the burst, flag.
+
+    Safe because:
+      • Only invalid credentials are submitted (no actual user accounts).
+      • Burst is capped at _RATE_PROBE_COUNT (default 6).
+      • A small inter-request delay keeps total RPS modest.
+    """
+    findings: list[WebFinding] = []
+    import secrets
+    import asyncio as _asyncio
+
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+
+    for path, payload_template in _COOKIE_PROBE_ENDPOINTS:
+        endpoint = base + path
+        statuses: list[int] = []
+        rl_headers_seen = False
+        endpoint_reachable = False
+
+        for _ in range(_RATE_PROBE_COUNT):
+            # Randomise per-request so caching / static 401s aren't conflated with rate limiting
+            payload = {
+                k: f"{v}-{secrets.token_hex(4)}" if isinstance(v, str) else v
+                for k, v in payload_template.items()
+            }
+            try:
+                resp = await client.post(
+                    endpoint,
+                    json=payload,
+                    timeout=4,
+                    follow_redirects=False,
+                )
+            except Exception:
+                break
+            endpoint_reachable = True
+            statuses.append(resp.status_code)
+
+            headers_lower = {k.lower() for k in resp.headers.keys()}
+            if any(h in headers_lower for h in _RATE_LIMIT_HEADERS):
+                rl_headers_seen = True
+                break
+            if resp.status_code == 429:
+                rl_headers_seen = True
+                break
+
+            await _asyncio.sleep(_RATE_PROBE_DELAY)
+
+        # Only report when the endpoint actually exists (we got at least one
+        # response that wasn't a 404) AND nothing throttled us.
+        if (
+            endpoint_reachable
+            and statuses
+            and not rl_headers_seen
+            and not all(s == 404 for s in statuses)
+        ):
+            findings.append(WebFinding(
+                check_id="WEB-DESIGN-NO_RATE_LIMIT",
+                title="No Rate Limiting on Authentication Endpoint",
+                severity=Severity.MEDIUM,
+                cvss_score=6.5,
+                owasp="A04:2021",
+                affected_url=endpoint,
+                description=(
+                    "The authentication endpoint accepted "
+                    f"{len(statuses)} consecutive failed login attempts "
+                    "without returning a 429 response, a Retry-After header, "
+                    "or any X-RateLimit-* header. This is an Insecure Design "
+                    "weakness enabling credential stuffing and brute-force attacks."
+                ),
+                evidence=(
+                    f"POST {endpoint} x{len(statuses)} → statuses {statuses}, "
+                    "no rate-limit headers observed."
+                ),
+                remediation=(
+                    "Add server-side rate limiting on all authentication endpoints "
+                    "(e.g. 5 attempts per IP / per username per 15 minutes). "
+                    "Return HTTP 429 with a Retry-After header once the threshold "
+                    "is exceeded, and consider account lockout / CAPTCHA escalation."
+                ),
+                references=[
+                    "https://owasp.org/Top10/A04_2021-Insecure_Design/",
+                    "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+                ],
+            ))
+            # Only need to flag the first reachable auth endpoint — don't spam
+            break
+
+    return findings
+
+
+def _check_subresource_integrity(resp: httpx.Response, url: str) -> list[WebFinding]:
+    """
+    A08 — Software & Data Integrity Failures.
+
+    Inspects the initial HTML response for external <script src> and
+    <link rel=stylesheet> tags loaded from a different origin and lacking
+    an `integrity="sha…"` attribute.
+    """
+    findings: list[WebFinding] = []
+    ctype = resp.headers.get("content-type", "").lower()
+    if "html" not in ctype:
+        return findings
+
+    body = resp.text
+    parsed = urlparse(url)
+    own_host = (parsed.hostname or "").lower()
+
+    def _is_external(src: str) -> bool:
+        s = src.strip()
+        if not s:
+            return False
+        if s.startswith("//"):
+            return True
+        if s.startswith(("http://", "https://")):
+            try:
+                host = urlparse(s).hostname or ""
+                return bool(host) and host.lower() != own_host
+            except Exception:
+                return False
+        return False
+
+    missing_scripts: list[str] = []
+    missing_links: list[str] = []
+
+    for match in re.finditer(
+        r'<script\b[^>]*\bsrc\s*=\s*["\']([^"\']+)["\'][^>]*>',
+        body,
+        re.IGNORECASE,
+    ):
+        tag = match.group(0)
+        src = match.group(1)
+        if _is_external(src) and not _INTEGRITY_RE.search(tag):
+            missing_scripts.append(src)
+
+    for match in _HTML_LINK_RE.finditer(body):
+        tag = match.group(0)
+        href_m = _LINK_HREF_RE.search(tag)
+        if not href_m:
+            continue
+        href = href_m.group(1)
+        if _is_external(href) and not _INTEGRITY_RE.search(tag):
+            missing_links.append(href)
+
+    if missing_scripts or missing_links:
+        total = len(missing_scripts) + len(missing_links)
+        sample = (missing_scripts + missing_links)[:5]
+        findings.append(WebFinding(
+            check_id="WEB-INTEGRITY-NO_SRI",
+            title="Cross-Origin Assets Loaded Without Subresource Integrity",
+            severity=Severity.MEDIUM,
+            cvss_score=5.9,
+            owasp="A08:2021",
+            affected_url=url,
+            description=(
+                f"Found {total} cross-origin <script>/<link> reference(s) loaded "
+                "without an `integrity=\"sha…\"` attribute. A compromised CDN or "
+                "MITM can substitute the asset and execute arbitrary code in the "
+                "context of this site (supply-chain attack)."
+            ),
+            evidence="Missing integrity on: " + ", ".join(s[:80] for s in sample) +
+                     (f"  (+{total - len(sample)} more)" if total > len(sample) else ""),
+            remediation=(
+                "Add Subresource Integrity (SRI) hashes to every cross-origin "
+                "<script> and <link rel=\"stylesheet\">: e.g. "
+                "<script src=\"…\" integrity=\"sha384-…\" crossorigin=\"anonymous\">. "
+                "Pin asset versions and regenerate the hash on each upgrade."
+            ),
+            references=[
+                "https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/",
+                "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity",
+            ],
+        ))
+
+    return findings
+
+
+async def _check_logging_and_monitoring(
+    client: httpx.AsyncClient,
+    url: str,
+) -> list[WebFinding]:
+    """
+    A09 — Security Logging & Monitoring Failures.
+
+    Two probes:
+      (a) Direct log/monitoring path exposure
+      (b) Verbose error pages on malformed requests
+    """
+    findings: list[WebFinding] = []
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+
+    # ── (a) Log/monitoring path exposure ──────────────────────────────────────
+    for path, title, severity, cvss in _LOG_EXPOSURE_PATHS:
+        full = base + path
+        try:
+            resp = await client.get(full, timeout=5, follow_redirects=False)
+        except Exception:
+            continue
+        # 200 with non-empty body and a textual content type → real exposure
+        ctype = resp.headers.get("content-type", "").lower()
+        if resp.status_code == 200 and len(resp.content) > 0 and (
+            "text" in ctype or "json" in ctype or "log" in ctype or not ctype
+        ):
+            findings.append(WebFinding(
+                check_id=f"WEB-LOG-EXPOSED-{path.strip('/').upper().replace('/', '_').replace('.', '_')}",
+                title=title,
+                severity=severity,
+                cvss_score=cvss,
+                owasp="A09:2021",
+                affected_url=full,
+                description=(
+                    f"The log/monitoring path '{path}' is publicly accessible "
+                    f"(HTTP 200, {len(resp.content)} bytes). Direct log exposure "
+                    "leaks request patterns, internal hostnames, stack traces, and "
+                    "sometimes credentials — defeating the purpose of logging."
+                ),
+                evidence=f"GET {full} → HTTP 200 ({len(resp.content)} bytes, content-type: {ctype or 'unknown'})",
+                remediation=(
+                    "Remove log files from the public web root, or block access "
+                    "via server config (deny in nginx / <Files> directive in Apache). "
+                    "Ship logs to a separate aggregator (ELK, Loki, CloudWatch) "
+                    "rather than serving them from the application."
+                ),
+                references=[
+                    "https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/",
+                ],
+            ))
+
+    # ── (b) Verbose error pages on malformed requests ─────────────────────────
+    seen_trace_pattern = False
+    for probe_path, _label in _VERBOSE_ERROR_PROBES:
+        try:
+            resp = await client.get(base + probe_path, timeout=5, follow_redirects=False)
+        except Exception:
+            continue
+        body_lower = resp.text.lower() if resp.text else ""
+        if not body_lower:
+            continue
+        matched_kind: Optional[str] = None
+        for needle, kind in _STACK_TRACE_PATTERNS:
+            if needle in body_lower:
+                matched_kind = kind
+                break
+        if matched_kind and not seen_trace_pattern:
+            seen_trace_pattern = True  # one finding per scan is enough
+            findings.append(WebFinding(
+                check_id="WEB-LOG-VERBOSE_ERROR",
+                title="Verbose Error Page Leaks Application Internals",
+                severity=Severity.MEDIUM,
+                cvss_score=5.3,
+                owasp="A09:2021",
+                affected_url=base + probe_path,
+                description=(
+                    f"A request to '{probe_path}' triggered a {matched_kind} in the "
+                    "response body. Production servers should not return stack traces "
+                    "or framework debug output — this both leaks implementation "
+                    "details and signals that errors are not being captured/monitored "
+                    "by a centralised logger."
+                ),
+                evidence=f"GET {base + probe_path} → HTTP {resp.status_code}; detected: {matched_kind}",
+                remediation=(
+                    "Disable debug / development mode in production. Return a generic "
+                    "error page to clients and forward the real exception to a logging "
+                    "and monitoring backend (Sentry, ELK, CloudWatch). Add alerts on "
+                    "5xx-rate spikes."
+                ),
+                references=[
+                    "https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/",
+                    "https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html",
+                ],
+            ))
+
+    return findings
 
 
 def _normalize_url(target: str) -> str:

@@ -9,7 +9,8 @@ from pydantic import BaseModel
 
 from app.core.database import get_db
 from app.api.deps import require_admin
-from app.schemas.user import UserOut
+from app.schemas.user import UserCreate, UserOut
+from app.services import auth_service
 from app.models.user import UserRole, UserStatus
 from app.utils.helpers import doc_to_out
 
@@ -21,6 +22,23 @@ _SERVER_START = time.time()
 class UserRoleUpdate(BaseModel):
     role: UserRole | None = None
     status: UserStatus | None = None
+
+
+@router.post("/users", response_model=UserOut, status_code=201)
+async def create_user(
+    data: UserCreate,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: UserOut = Depends(require_admin),
+):
+    """
+    Admin-only: create a new user.
+
+    The UserCreate schema enforces:
+      • RFC-valid email (Pydantic EmailStr)
+      • Strong password (>=12 chars, upper/lower/digit/special — see schemas/user.py)
+      • Unique username + email (checked in auth_service.register_user)
+    """
+    return await auth_service.register_user(db, data)
 
 
 @router.get("/users")
@@ -73,8 +91,37 @@ async def delete_user(
     db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: UserOut = Depends(require_admin),
 ):
+    """
+    Delete a user and cascade-clean their scans + every artefact derived
+    from those scans (vulnerabilities, scan_logs, reports). Any of the
+    user's running/pending Celery tasks are revoked first so the worker
+    doesn't keep writing to collections we're about to delete from.
+    """
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    # Gather the user's scan ids before deletion so we can cascade
+    scan_docs = await db.scans.find(
+        {"user_id": user_id},
+        {"_id": 1, "task_id": 1, "status": 1},
+    ).to_list(length=None)
+    scan_ids = [str(d["_id"]) for d in scan_docs]
+
+    # Revoke any in-flight Celery tasks
+    from app.services.scan_service import _revoke_task
+    for d in scan_docs:
+        if d.get("task_id") and d.get("status") in ("pending", "running"):
+            _revoke_task(d["task_id"])
+
+    # Cascade — child collections first, then scans, then the user record
+    if scan_ids:
+        await db.vulnerabilities.delete_many({"scan_id": {"$in": scan_ids}})
+        await db.reports.delete_many({"scan_id": {"$in": scan_ids}})
+        await db.scan_logs.delete_many({"scan_id": {"$in": scan_ids}})
+        await db.scans.delete_many(
+            {"_id": {"$in": [ObjectId(s) for s in scan_ids]}},
+        )
+
     result = await db.users.delete_one({"_id": ObjectId(user_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")

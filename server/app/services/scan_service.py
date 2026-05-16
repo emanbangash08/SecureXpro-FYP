@@ -102,8 +102,10 @@ async def delete_scan(db: AsyncIOMotorDatabase, scan_id: str, user_id: str) -> N
     if result.deleted_count == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
 
+    # Cascade delete — keep these collections in sync with scans
     await db.vulnerabilities.delete_many({"scan_id": scan_id})
     await db.reports.delete_many({"scan_id": scan_id})
+    await db.scan_logs.delete_many({"scan_id": scan_id})
 
 
 # ── Lifecycle transitions ──────────────────────────────────────────────────────

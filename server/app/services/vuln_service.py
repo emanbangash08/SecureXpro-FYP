@@ -104,6 +104,8 @@ async def correlate_vulnerabilities(
             doc["epss_percentile"] = round(epss.percentile, 4) if epss else None
             doc["in_kev"]          = in_kev
             doc["match_type"]      = record.match_type
+            doc["cvss_vector"]     = record.cvss_vector
+            doc["cwe_ids"]         = record.cwe_ids
 
             result = await db.vulnerabilities.insert_one(doc)
             doc["_id"] = result.inserted_id

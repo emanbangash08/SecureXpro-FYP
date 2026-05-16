@@ -108,6 +108,9 @@ class CveRecord:
     references: list[str] = field(default_factory=list)
     remediation: str = ""
     match_type: str = "keyword"  # "cpe_exact" | "keyword"
+    # ── Module-3 enrichment (parsed from NVD, used by exploit_service) ─────────
+    cvss_vector: str = ""       # e.g. "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    cwe_ids: list[str] = field(default_factory=list)  # e.g. ["CWE-89", "CWE-79"]
 
 
 # ── CPE building ──────────────────────────────────────────────────────────────
@@ -354,9 +357,17 @@ def _parse_cve_item(item: dict, match_type: str) -> Optional[CveRecord]:
     description = next((d["value"] for d in descriptions if d["lang"] == "en"), "")
 
     metrics = cve_data.get("metrics", {})
-    cvss_score = _extract_cvss_score(metrics)
+    cvss_score, cvss_vector = _extract_cvss(metrics)
 
     refs = [r["url"] for r in cve_data.get("references", [])[:5]]
+
+    # Weakness types — flatten the CWE descriptions block.
+    cwe_ids: list[str] = []
+    for weakness in cve_data.get("weaknesses", []):
+        for desc in weakness.get("description", []):
+            val = (desc.get("value") or "").strip()
+            if val.startswith("CWE-") and val not in cwe_ids:
+                cwe_ids.append(val)
 
     return CveRecord(
         cve_id=cve_id,
@@ -365,12 +376,21 @@ def _parse_cve_item(item: dict, match_type: str) -> Optional[CveRecord]:
         cvss_score=cvss_score,
         references=refs,
         match_type=match_type,
+        cvss_vector=cvss_vector,
+        cwe_ids=cwe_ids,
     )
 
 
-def _extract_cvss_score(metrics: dict) -> float:
+def _extract_cvss(metrics: dict) -> tuple[float, str]:
+    """Return (base_score, vector_string) from the best available CVSS block."""
     for key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
         entries = metrics.get(key, [])
         if entries:
-            return entries[0].get("cvssData", {}).get("baseScore", 0.0)
-    return 0.0
+            data = entries[0].get("cvssData", {}) or {}
+            return data.get("baseScore", 0.0), data.get("vectorString", "")
+    return 0.0, ""
+
+
+# Legacy-compatible wrapper, kept for callers that only need the score.
+def _extract_cvss_score(metrics: dict) -> float:
+    return _extract_cvss(metrics)[0]
