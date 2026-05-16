@@ -190,9 +190,13 @@ async def _execute_scan(scan_id: str) -> None:
             _port = _parsed.port or (443 if _parsed.scheme == "https" else 80)
             _scheme = _parsed.scheme
             _all_web: list = []
+            _phase_timings: dict = {}
+            _ssl_info: dict = {}
+            _spider_urls: list[str] = []
 
             # Sub-phase: web_init — connect to target
             await _set_phase(db, scan_id, "web_init")
+            _t_init = datetime.now(timezone.utc)
             await _log(db, scan_id, "web_init", "cmd", f"> curl -ILk {web_url}")
             await _log(db, scan_id, "web_init", "info", f"  Establishing connection to {web_url} ...")
             try:
@@ -201,10 +205,19 @@ async def _execute_scan(scan_id: str) -> None:
                 await _log(db, scan_id, "web_init", "error",
                            f"  [ERROR] Cannot connect to {web_url}: {_conn_exc}")
                 raise
+            _phase_timings["web_init"] = round((datetime.now(timezone.utc) - _t_init).total_seconds(), 1)
             await _log(db, scan_id, "web_init", "success",
                        f"  [+] HTTP {_resp.status_code} | Server: {_resp.headers.get('server', '?')} | {len(_resp.content)} bytes")
 
+            # Collect SSL cert info for HTTPS targets
+            if _scheme == "https":
+                try:
+                    _ssl_info = web_service.get_ssl_info(_host, _port)
+                except Exception:
+                    _ssl_info = {}
+
             # Sub-phase: web_headers — security headers, SSL, CORS, cookies
+            _t_headers = datetime.now(timezone.utc)
             await _set_phase(db, scan_id, "web_headers")
             await _log(db, scan_id, "web_headers", "cmd",
                        "> securex-web --check-headers --check-ssl --check-cors --check-cookies")
@@ -227,10 +240,12 @@ async def _execute_scan(scan_id: str) -> None:
                     await _log(db, scan_id, "web_headers", "warning",
                                f"  [!] {_label} check error: {exc}")
 
+            _phase_timings["web_headers"] = round((datetime.now(timezone.utc) - _t_headers).total_seconds(), 1)
             await _log(db, scan_id, "web_headers", "success",
                        f"  [+] Header audit complete — {len(_all_web)} finding(s) so far")
 
             # Sub-phase: web_active — path probing, injection testing, CSRF
+            _t_active = datetime.now(timezone.utc)
             await _set_phase(db, scan_id, "web_active")
             await _log(db, scan_id, "web_active", "cmd",
                        f"> securex-web --probe-paths {web_service.SENSITIVE_PATH_COUNT} "
@@ -368,12 +383,15 @@ async def _execute_scan(scan_id: str) -> None:
             except Exception as exc:
                 await _log(db, scan_id, "web_active", "warning", f"  [!] Logging check error: {exc}")
 
+            _phase_timings["web_active"] = round((datetime.now(timezone.utc) - _t_active).total_seconds(), 1)
+
             try:
                 await _client.aclose()
             except Exception:
                 pass
 
             # Sub-phase: web_zap — OWASP ZAP Docker active scan (WSL2)
+            _t_zap = datetime.now(timezone.utc)
             await _set_phase(db, scan_id, "web_zap")
             await _log(db, scan_id, "web_zap", "cmd",
                        "> docker run ghcr.io/zaproxy/zaproxy:stable zap.sh -daemon --spider --ascan")
@@ -436,6 +454,11 @@ async def _execute_scan(scan_id: str) -> None:
                     except asyncio.CancelledError:
                         pass
 
+                # Collect discovered URLs from ZAP findings
+                for _f in _zap_findings:
+                    if _f.affected_url and _f.affected_url not in _spider_urls:
+                        _spider_urls.append(_f.affected_url)
+
                 if _zap_findings:
                     await _log(db, scan_id, "web_zap", "info",
                                "  Phase 2: Active scan complete")
@@ -454,7 +477,10 @@ async def _execute_scan(scan_id: str) -> None:
                 await _log(db, scan_id, "web_zap", "info",
                            "  Run: wsl -d Ubuntu -u root -- service docker start")
 
+            _phase_timings["web_zap"] = round((datetime.now(timezone.utc) - _t_zap).total_seconds(), 1)
+
             # Sub-phase: web_nikto — Nikto Docker misconfiguration scan (WSL2)
+            _t_nikto = datetime.now(timezone.utc)
             await _set_phase(db, scan_id, "web_nikto")
             await _log(db, scan_id, "web_nikto", "cmd",
                        f"> docker run --rm sullo/nikto -h {web_url} -Tuning 123bde -Format json")
@@ -490,8 +516,14 @@ async def _execute_scan(scan_id: str) -> None:
                 await _log(db, scan_id, "web_nikto", "warning",
                            "  [!] Docker not available in WSL2 — skipping Nikto scan")
 
+            _phase_timings["web_nikto"] = round((datetime.now(timezone.utc) - _t_nikto).total_seconds(), 1)
             await web_service.persist_findings(db, scan_id, _all_web, _host, _port, _scheme)
-            _web_results = web_service.make_summary(_resp, web_url, _all_web)
+            _web_results = web_service.make_summary(
+                _resp, web_url, _all_web,
+                ssl_info=_ssl_info if _scheme == "https" else None,
+                spider_urls=list(dict.fromkeys(_spider_urls)),
+                phase_timings=_phase_timings,
+            )
             await db.scans.update_one(
                 {"_id": ObjectId(scan_id)},
                 {"$set": {"web_results": _web_results, "updated_at": datetime.now(timezone.utc)}},

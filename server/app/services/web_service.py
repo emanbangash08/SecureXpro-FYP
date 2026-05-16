@@ -420,15 +420,119 @@ async def persist_findings(
         await db.vulnerabilities.insert_one(doc)
 
 
-def make_summary(resp: httpx.Response, url: str, findings: list[WebFinding]) -> dict:
+def get_ssl_info(host: str, port: int) -> dict:
+    """Return SSL certificate details as a plain dict (no findings)."""
+    import ssl as _ssl
+    try:
+        ctx = _ssl.create_default_context()
+        with socket.create_connection((host, port), timeout=5) as sock:
+            with ctx.wrap_socket(sock, server_hostname=host) as ssock:
+                cert   = ssock.getpeercert()
+                cipher = ssock.cipher()
+        not_after  = cert.get("notAfter", "")
+        not_before = cert.get("notBefore", "")
+        subject    = dict(x[0] for x in cert.get("subject", []))
+        issuer     = dict(x[0] for x in cert.get("issuer", []))
+        days_left: int | None = None
+        if not_after:
+            try:
+                expiry    = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
+                days_left = (expiry - datetime.utcnow()).days
+            except Exception:
+                pass
+        san: list[str] = []
+        for ext in cert.get("subjectAltName", []):
+            if ext[0] == "DNS":
+                san.append(ext[1])
+        return {
+            "valid":              True,
+            "subject_cn":         subject.get("commonName", ""),
+            "issuer_org":         issuer.get("organizationName", ""),
+            "issuer_cn":          issuer.get("commonName", ""),
+            "not_before":         not_before,
+            "not_after":          not_after,
+            "days_until_expiry":  days_left,
+            "san":                san[:8],
+            "cipher":             cipher[0] if cipher else "",
+            "protocol":           cipher[1] if cipher else "",
+            "key_bits":           cipher[2] if cipher else None,
+        }
+    except Exception as exc:
+        return {"valid": False, "error": str(exc)}
+
+
+def _extract_tech_stack(resp: httpx.Response) -> list[dict]:
+    """Fingerprint technologies from response headers."""
+    tech: list[dict] = []
+    h = resp.headers
+
+    server = h.get("server", "")
+    if server:
+        tech.append({"name": server, "category": "Server"})
+
+    powered = h.get("x-powered-by", "")
+    if powered:
+        tech.append({"name": powered, "category": "Framework"})
+
+    # CDN detection
+    if h.get("cf-ray") or h.get("cf-cache-status") or "cloudflare" in server.lower():
+        if not any(t["name"] == "Cloudflare" for t in tech):
+            tech.append({"name": "Cloudflare", "category": "CDN"})
+    if h.get("x-amz-cf-id") or h.get("x-amz-request-id"):
+        tech.append({"name": "Amazon CloudFront", "category": "CDN"})
+    if h.get("x-cache", "").startswith("HIT") and "akamai" in h.get("via", "").lower():
+        tech.append({"name": "Akamai", "category": "CDN"})
+
+    # CMS / frameworks
+    if h.get("x-generator"):
+        tech.append({"name": h["x-generator"], "category": "CMS"})
+    if h.get("x-drupal-cache") or h.get("x-drupal-dynamic-cache"):
+        tech.append({"name": "Drupal", "category": "CMS"})
+    if h.get("x-wp-total") or h.get("x-pingback"):
+        tech.append({"name": "WordPress", "category": "CMS"})
+    if h.get("x-shopify-stage") or h.get("x-shopid"):
+        tech.append({"name": "Shopify", "category": "E-commerce"})
+
+    # Backend frameworks
+    if h.get("x-aspnet-version"):
+        tech.append({"name": f"ASP.NET {h['x-aspnet-version']}", "category": "Framework"})
+    if h.get("x-aspnetmvc-version"):
+        tech.append({"name": f"ASP.NET MVC {h['x-aspnetmvc-version']}", "category": "Framework"})
+
+    # Proxy / LB
+    via = h.get("via", "")
+    if via:
+        tech.append({"name": via, "category": "Proxy/Load Balancer"})
+
+    return tech
+
+
+def make_summary(
+    resp: httpx.Response,
+    url: str,
+    findings: list[WebFinding],
+    ssl_info: dict | None = None,
+    spider_urls: list[str] | None = None,
+    phase_timings: dict | None = None,
+) -> dict:
     parsed = urlparse(url)
+    try:
+        response_time_ms: float | None = round(resp.elapsed.total_seconds() * 1000, 1)
+    except Exception:
+        response_time_ms = None
     return {
-        "url": url,
-        "final_url": str(resp.url),
-        "status_code": resp.status_code,
-        "server": resp.headers.get("server", ""),
-        "https": parsed.scheme == "https",
-        "total_findings": len(findings),
+        "url":              url,
+        "final_url":        str(resp.url),
+        "status_code":      resp.status_code,
+        "server":           resp.headers.get("server", ""),
+        "https":            parsed.scheme == "https",
+        "total_findings":   len(findings),
+        "content_length":   len(resp.content),
+        "response_time_ms": response_time_ms,
+        "tech_stack":       _extract_tech_stack(resp),
+        "ssl_info":         ssl_info or {},
+        "spider_urls":      spider_urls or [],
+        "phase_timings":    phase_timings or {},
         "checks_performed": [
             "headers", "server_disclosure", "cors", "cookies",
             "sensitive_paths", "http_methods",

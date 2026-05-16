@@ -90,108 +90,91 @@ function Skeleton({
   );
 }
 
-/* ── Security Posture Ring — circular gauge for hero ── */
+/* ── Risk Ring — shows total vuln count; ring fills with risk level ── */
 function PostureRing({
-  score,
+  totalVulns,
+  critical,
+  high,
+  medium,
+  low,
   loading,
   size = 132,
 }: {
-  score: number;
+  totalVulns: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
   loading: boolean;
   size?: number;
 }) {
-  const animated = useCounter(score, 200);
-  const stroke = Math.max(5, Math.round(size * 0.06));
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  const numSize = Math.round(size * 0.32);
-  const labelSize = Math.max(8, Math.round(size * 0.075));
+  // Risk fill 0-100: grows logarithmically so even 1 critical registers visually
+  const rawRisk = Math.min(100, Math.round(
+    (critical * 14 + high * 7 + medium * 2.5 + low * 0.8) / 1.4
+  ));
+  // Cap so it reaches 100% only at truly extreme volumes
+  const riskPct = Math.min(100, rawRisk);
+
+  const animatedCount = useCounter(totalVulns, 200);
+  const animatedRisk  = useCounter(riskPct, 200);
 
   const grade =
-    score >= 85
-      ? { label: "Excellent", color: "var(--safe)" }
-      : score >= 65
-        ? { label: "Good", color: "var(--brand-sky)" }
-        : score >= 40
-          ? { label: "Fair", color: "var(--medium)" }
-          : { label: "At Risk", color: "var(--critical)" };
+    riskPct === 0
+      ? { label: "Secure",    color: "var(--safe)" }
+      : riskPct <= 20
+        ? { label: "Low Risk",  color: "var(--brand-sky)" }
+        : riskPct <= 50
+          ? { label: "Moderate",  color: "var(--medium)" }
+          : riskPct <= 75
+            ? { label: "High Risk", color: "#F97316" }
+            : { label: "Critical",  color: "var(--critical)" };
 
-  const dash = c * (animated / 100);
-
-  const haloR = r + stroke + 3;
+  const stroke = Math.max(5, Math.round(size * 0.06));
+  const r      = (size - stroke) / 2;
+  const circ   = 2 * Math.PI * r;
+  const dash   = circ * (animatedRisk / 100);
+  const haloR  = r + stroke + 3;
+  const numSize   = totalVulns >= 100 ? Math.round(size * 0.24) : Math.round(size * 0.30);
+  const labelSize = Math.max(8, Math.round(size * 0.075));
 
   return (
-    <div
-      style={{
-        position: "relative",
-        width: size,
-        height: size,
-        flexShrink: 0,
-      }}
-    >
-      {/* Outer rotating dashed halo */}
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      {/* Rotating dashed halo */}
       <svg
         width={size + 12}
         height={size + 12}
-        style={{
-          position: "absolute",
-          top: -6,
-          left: -6,
-          animation: "halo-spin 32s linear infinite",
-          opacity: 0.55,
-        }}
+        style={{ position: "absolute", top: -6, left: -6, animation: "halo-spin 32s linear infinite", opacity: 0.55 }}
       >
         <circle
-          cx={(size + 12) / 2}
-          cy={(size + 12) / 2}
-          r={haloR}
-          fill="none"
-          stroke={grade.color}
-          strokeOpacity="0.35"
-          strokeWidth="0.8"
-          strokeDasharray="2 6"
+          cx={(size + 12) / 2} cy={(size + 12) / 2} r={haloR}
+          fill="none" stroke={grade.color} strokeOpacity="0.35"
+          strokeWidth="0.8" strokeDasharray="2 6"
         />
       </svg>
+
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
         <defs>
           <linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor={grade.color} stopOpacity="1" />
+            <stop offset="0%"   stopColor={grade.color} stopOpacity="1" />
             <stop offset="100%" stopColor={grade.color} stopOpacity="0.55" />
           </linearGradient>
         </defs>
+        {/* Track */}
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--surface-3)" strokeWidth={stroke} />
+        {/* Fill — grows as risk increases */}
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="var(--surface-3)"
-          strokeWidth={stroke}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="url(#ring-grad)"
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={c - dash}
-          style={{
-            transition: "stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)",
-            filter: `drop-shadow(0 0 8px ${grade.color}88)`,
-          }}
+          cx={size / 2} cy={size / 2} r={r}
+          fill="none" stroke="url(#ring-grad)"
+          strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={circ} strokeDashoffset={circ - dash}
+          style={{ transition: "stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)", filter: `drop-shadow(0 0 8px ${grade.color}88)` }}
         />
       </svg>
+
       <div
         style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 2,
+          position: "absolute", inset: 0, display: "flex",
+          flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1,
         }}
       >
         {loading ? (
@@ -200,28 +183,18 @@ function PostureRing({
           <>
             <div
               style={{
-                fontFamily: "var(--font-display)",
-                fontSize: numSize,
-                fontWeight: 700,
-                lineHeight: 1,
-                letterSpacing: "-1.2px",
+                fontFamily: "var(--font-display)", fontSize: numSize,
+                fontWeight: 700, lineHeight: 1, letterSpacing: "-1.2px",
                 background: `linear-gradient(180deg, var(--text-strong) 0%, ${grade.color} 140%)`,
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
+                WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
               }}
             >
-              {animated}
+              {animatedCount}
             </div>
             <div
               style={{
-                fontSize: labelSize,
-                fontFamily: "var(--font-mono)",
-                color: grade.color,
-                textTransform: "uppercase",
-                letterSpacing: "1.4px",
-                fontWeight: 700,
-                marginTop: 2,
+                fontSize: labelSize, fontFamily: "var(--font-mono)", color: grade.color,
+                textTransform: "uppercase", letterSpacing: "1.2px", fontWeight: 700, marginTop: 3,
               }}
             >
               {grade.label}
@@ -569,7 +542,7 @@ function CompositionBar({
   );
 }
 
-/* ── severity row — compact list item with dot ── */
+/* ── severity row — compact with inline animated bar ── */
 function SeverityRow({
   label,
   value,
@@ -584,69 +557,92 @@ function SeverityRow({
   delay?: number;
 }) {
   const pct = total === 0 ? 0 : Math.round((value / total) * 100);
+  const [drawn, setDrawn] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setDrawn(true), delay + 80);
+    return () => clearTimeout(t);
+  }, [delay]);
+
   return (
     <div
       style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "9px 0",
-        borderBottom: "1px solid var(--border-subtle)",
+        padding: "7px 0",
         animation: `slide-in .35s cubic-bezier(0.16,1,0.3,1) ${delay}ms both`,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 2,
-            background: color,
-            boxShadow: `0 0 8px ${color}55`,
-          }}
-        />
-        <span
-          style={{
-            fontSize: 11.5,
-            fontFamily: "var(--font-display)",
-            fontWeight: 600,
-            color: "var(--text-soft)",
-          }}
-        >
-          {label}
-        </span>
-      </div>
       <div
         style={{
           display: "flex",
-          alignItems: "baseline",
-          gap: 10,
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 5,
         }}
       >
-        <span
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: 2,
+              background: color,
+              boxShadow: `0 0 6px ${color}66`,
+              flexShrink: 0,
+            }}
+          />
+          <span
+            style={{
+              fontSize: 11,
+              fontFamily: "var(--font-display)",
+              fontWeight: 600,
+              color: "var(--text-soft)",
+            }}
+          >
+            {label}
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              fontSize: 9,
+              fontFamily: "var(--font-mono)",
+              color: "var(--text-quietest)",
+            }}
+          >
+            {pct}%
+          </span>
+          <span
+            style={{
+              fontSize: 14,
+              fontFamily: "var(--font-display)",
+              fontWeight: 700,
+              color: value > 0 ? color : "var(--text-quietest)",
+              minWidth: 20,
+              textAlign: "right",
+              transition: "color .3s",
+            }}
+          >
+            {value}
+          </span>
+        </div>
+      </div>
+      <div
+        style={{
+          height: 3,
+          borderRadius: 999,
+          background: "var(--surface-3)",
+          overflow: "hidden",
+        }}
+      >
+        <div
           style={{
-            fontSize: 10,
-            fontFamily: "var(--font-mono)",
-            color: "var(--text-quietest)",
-            minWidth: 30,
-            textAlign: "right",
+            height: "100%",
+            width: drawn ? `${Math.max(pct > 0 ? 2 : 0, pct)}%` : "0%",
+            background: color,
+            borderRadius: 999,
+            transition: `width 0.9s cubic-bezier(0.16,1,0.3,1) ${delay}ms`,
+            boxShadow: pct > 0 ? `0 0 6px ${color}55` : "none",
           }}
-        >
-          {pct}%
-        </span>
-        <span
-          style={{
-            fontSize: 15,
-            fontFamily: "var(--font-display)",
-            fontWeight: 700,
-            color: value > 0 ? color : "var(--text-quietest)",
-            minWidth: 24,
-            textAlign: "right",
-            transition: "color .3s",
-          }}
-        >
-          {value}
-        </span>
+        />
       </div>
     </div>
   );
@@ -669,337 +665,299 @@ function TrendGraph({
   const [drawn, setDrawn] = useState(false);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   useEffect(() => {
-    const t = setTimeout(() => setDrawn(true), 200);
+    const t = setTimeout(() => setDrawn(true), 300);
     return () => clearTimeout(t);
   }, [data]);
 
-  const h = 200,
-    w = 720,
-    padL = 36,
-    padR = 56,
-    padT = 14,
-    padB = 26;
+  const h = 190, w = 720, padL = 42, padR = 24, padT = 16, padB = 30;
   const innerW = w - padL - padR;
   const innerH = h - padT - padB;
+
   const maxVal = Math.max(
-    ...data.flatMap((d) => [d.critical, d.high, d.medium]),
+    ...data.flatMap((d) => [d.critical, d.high, d.medium, d.low ?? 0]),
     1,
   );
-  const niceMax = Math.ceil(maxVal / 5) * 5 || 5;
-  const hasData = data.some((d) => d.critical + d.high + d.medium > 0);
+  // Nice round ceiling: next multiple of 4 steps
+  const step = Math.ceil(maxVal / 4);
+  const niceMax = step * 4 || 4;
+  const hasData = data.some((d) => d.critical + d.high + d.medium + (d.low ?? 0) > 0);
 
   const xAt = (i: number) => padL + (i / Math.max(data.length - 1, 1)) * innerW;
   const yAt = (v: number) => padT + innerH - (v / niceMax) * innerH;
 
-  const getSmoothPath = (key: "critical" | "high" | "medium") => {
-    const pts = data.map((d, i) => ({ x: xAt(i), y: yAt(d[key]) }));
+  const getSmoothPath = (key: "critical" | "high" | "medium" | "low") => {
+    const pts = data.map((d, i) => ({ x: xAt(i), y: yAt((d as any)[key] ?? 0) }));
+    if (pts.length < 2) return `M ${pts[0]?.x ?? 0} ${pts[0]?.y ?? 0}`;
     let path = `M ${pts[0].x} ${pts[0].y}`;
     for (let i = 0; i < pts.length - 1; i++) {
-      const cx = (pts[i].x + pts[i + 1].x) / 2;
-      path += ` C ${cx} ${pts[i].y}, ${cx} ${pts[i + 1].y}, ${pts[i + 1].x} ${pts[i + 1].y}`;
+      const cp = (pts[i].x + pts[i + 1].x) / 2;
+      path += ` C ${cp} ${pts[i].y}, ${cp} ${pts[i + 1].y}, ${pts[i + 1].x} ${pts[i + 1].y}`;
     }
     return path;
   };
-  const getAreaPath = (key: "critical" | "high" | "medium") => {
-    const linePath = getSmoothPath(key);
-    return `${linePath} L ${xAt(data.length - 1)} ${padT + innerH} L ${xAt(0)} ${padT + innerH} Z`;
-  };
+  const getAreaPath = (key: "critical" | "high" | "medium" | "low") =>
+    `${getSmoothPath(key)} L ${xAt(data.length - 1)} ${padT + innerH} L ${xAt(0)} ${padT + innerH} Z`;
 
   if (loading)
-    return (
-      <div style={{ height: h + 24 }}>
-        <Skeleton h={h} r={10} />
-      </div>
-    );
+    return <div style={{ height: h + 24 }}><Skeleton h={h} r={10} /></div>;
 
-  const lastIdx = data.length - 1;
   const series: Array<{
-    key: "critical" | "high" | "medium";
+    key: "critical" | "high" | "medium" | "low";
+    label: string;
     color: string;
     gradId: string;
     delay: number;
+    width: number;
   }> = [
-    { key: "medium", color: "#EAB308", gradId: "g-med", delay: 0.1 },
-    { key: "high", color: "#F97316", gradId: "g-high", delay: 0.2 },
-    { key: "critical", color: "#EF4444", gradId: "g-crit", delay: 0.3 },
+    { key: "low",      label: "Low",      color: "#22c55e", gradId: "g-low",  delay: 0.05, width: 1.5 },
+    { key: "medium",   label: "Medium",   color: "#EAB308", gradId: "g-med",  delay: 0.15, width: 1.7 },
+    { key: "high",     label: "High",     color: "#F97316", gradId: "g-high", delay: 0.25, width: 1.9 },
+    { key: "critical", label: "Critical", color: "#EF4444", gradId: "g-crit", delay: 0.35, width: 2.3 },
   ];
 
+  // Stagger end-of-line chips so they don't overlap
+  const lastIdx = data.length - 1;
+  const MIN_GAP = 16;
+  const chipPositions = (() => {
+    const raw = series.map((s) => ({
+      key: s.key,
+      color: s.color,
+      val: (data[lastIdx] as any)[s.key] ?? 0,
+      y: yAt((data[lastIdx] as any)[s.key] ?? 0),
+    })).sort((a, b) => a.y - b.y);   // top to bottom
+
+    const result = raw.map((r) => ({ ...r, adjustedY: r.y }));
+    for (let i = 1; i < result.length; i++) {
+      if (result[i].adjustedY - result[i - 1].adjustedY < MIN_GAP) {
+        result[i].adjustedY = result[i - 1].adjustedY + MIN_GAP;
+      }
+    }
+    return result;
+  })();
+
+  // Tooltip position: left or right of crosshair based on which half we're in
+  const tooltipOnRight = hoverIdx !== null && hoverIdx < data.length / 2;
+
   return (
-    <div style={{ width: "100%", position: "relative" }}>
+    <div style={{ width: "100%", position: "relative", userSelect: "none" }}>
       {!hasData && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 2,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              fontFamily: "var(--font-mono)",
-              color: "var(--text-fainter)",
-              textAlign: "center",
-              padding: "12px 20px",
-              borderRadius: 10,
-              background: "var(--surface-2)",
-              border: "1px dashed var(--border-default)",
-            }}
-          >
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
+          <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-fainter)", textAlign: "center", padding: "10px 18px", borderRadius: 10, background: "var(--surface-2)", border: "1px dashed var(--border-default)" }}>
             Run your first scan to populate the trend
           </div>
         </div>
       )}
+
       <svg
         viewBox={`0 0 ${w} ${h}`}
         preserveAspectRatio="none"
-        style={{
-          width: "100%",
-          height: h,
-          overflow: "visible",
-          opacity: hasData ? 1 : 0.25,
-          transition: "opacity .5s",
-        }}
+        style={{ width: "100%", height: h, overflow: "visible", opacity: hasData ? 1 : 0.2, transition: "opacity .5s" }}
       >
         <defs>
-          <linearGradient id="g-med" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#EAB308" stopOpacity="0.22" />
+          <linearGradient id="g-low"  x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#22c55e" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="g-med"  x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#EAB308" stopOpacity="0.20" />
             <stop offset="100%" stopColor="#EAB308" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="g-high" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#F97316" stopOpacity="0.26" />
+            <stop offset="0%"   stopColor="#F97316" stopOpacity="0.24" />
             <stop offset="100%" stopColor="#F97316" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="g-crit" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#EF4444" stopOpacity="0.32" />
+            <stop offset="0%"   stopColor="#EF4444" stopOpacity="0.30" />
             <stop offset="100%" stopColor="#EF4444" stopOpacity="0" />
           </linearGradient>
         </defs>
 
+        {/* Grid lines + y-axis labels */}
         {[0, 0.25, 0.5, 0.75, 1].map((pct) => {
           const y = padT + innerH * (1 - pct);
-          const value = Math.round(niceMax * pct);
+          const val = Math.round(niceMax * pct);
           return (
             <g key={pct}>
               <line
-                x1={padL}
-                y1={y}
-                x2={padL + innerW}
-                y2={y}
+                x1={padL} y1={y} x2={padL + innerW} y2={y}
                 stroke="var(--border-subtle)"
-                strokeDasharray={pct === 0 ? "0" : "3 6"}
-                strokeWidth={pct === 0 ? 1 : 0.8}
+                strokeDasharray={pct === 0 ? "0" : "4 8"}
+                strokeWidth={pct === 0 ? 1 : 0.6}
+                strokeOpacity={pct === 0 ? 0.6 : 0.35}
               />
               <text
-                x={padL - 10}
-                y={y + 3}
+                x={padL - 8} y={y + 4}
                 textAnchor="end"
-                fontSize="9.5"
+                fontSize="10"
                 fontFamily="var(--font-mono)"
                 fill="var(--text-quietest)"
-                style={{ letterSpacing: "0.5px" }}
-              >
-                {value}
-              </text>
+                opacity="0.7"
+              >{val}</text>
             </g>
           );
         })}
 
+        {/* Area fills */}
         {series.map((s) => (
           <path
             key={`area-${s.key}`}
             d={getAreaPath(s.key)}
             fill={`url(#${s.gradId})`}
             opacity={drawn ? 1 : 0}
-            style={{ transition: `opacity .8s ${s.delay}s` }}
+            style={{ transition: `opacity .9s ${s.delay}s ease` }}
           />
         ))}
 
+        {/* Lines with draw animation */}
         {series.map((s) => (
           <path
             key={`line-${s.key}`}
             d={getSmoothPath(s.key)}
             fill="none"
             stroke={s.color}
-            strokeWidth={s.key === "critical" ? 2.4 : 1.7}
+            strokeWidth={s.width}
             strokeLinecap="round"
             strokeLinejoin="round"
             pathLength={1}
             strokeDasharray="1"
             strokeDashoffset={drawn ? 0 : 1}
-            style={{
-              transition: `stroke-dashoffset 1s cubic-bezier(0.16,1,0.3,1) ${s.delay}s`,
-            }}
+            style={{ transition: `stroke-dashoffset 1.1s cubic-bezier(0.16,1,0.3,1) ${s.delay}s` }}
           />
         ))}
 
-        {data.map((d, i) => {
-          const x = xAt(i);
-          const y = yAt(d.critical);
-          const isHover = hoverIdx === i;
+        {/* Hover crosshair */}
+        {hoverIdx !== null && (
+          <>
+            <line
+              x1={xAt(hoverIdx)} y1={padT - 4}
+              x2={xAt(hoverIdx)} y2={padT + innerH}
+              stroke="var(--text-quietest)"
+              strokeWidth="1"
+              strokeDasharray="3 5"
+              strokeOpacity="0.5"
+            />
+            {/* Dots on every series at hover index */}
+            {series.map((s) => {
+              const v = (data[hoverIdx] as any)[s.key] ?? 0;
+              const cx = xAt(hoverIdx);
+              const cy = yAt(v);
+              return (
+                <g key={`hdot-${s.key}`}>
+                  <circle cx={cx} cy={cy} r="7" fill={s.color} opacity="0.15" />
+                  <circle cx={cx} cy={cy} r="4" fill="var(--surface-1)" stroke={s.color} strokeWidth="2" />
+                </g>
+              );
+            })}
+          </>
+        )}
+
+        {/* Invisible wide hit-strips per column for hover */}
+        {data.map((_, i) => {
+          const cx = xAt(i);
+          const stripW = innerW / Math.max(data.length - 1, 1);
           return (
-            <g
-              key={`pt-${i}`}
-              opacity={drawn ? 1 : 0}
-              style={{ transition: `opacity .4s ${0.4 + i * 0.05}s` }}
+            <rect
+              key={`hit-${i}`}
+              x={cx - stripW / 2}
+              y={padT}
+              width={stripW}
+              height={innerH}
+              fill="transparent"
+              style={{ cursor: "crosshair" }}
               onMouseEnter={() => setHoverIdx(i)}
               onMouseLeave={() => setHoverIdx(null)}
-            >
-              {isHover && (
-                <circle cx={x} cy={y} r="13" fill="rgba(239,68,68,0.15)" />
-              )}
-              <circle
-                cx={x}
-                cy={y}
-                r={isHover ? 5.5 : 4}
-                fill="var(--surface-1)"
-                stroke="#EF4444"
-                strokeWidth="2"
-                style={{ transition: "r .18s" }}
+            />
+          );
+        })}
+
+        {/* End-of-chart value chips — staggered vertically */}
+        {hasData && drawn && chipPositions.map((cp) => {
+          const x = xAt(lastIdx);
+          const chipW = 34;
+          return (
+            <g key={`chip-${cp.key}`} opacity={drawn ? 1 : 0} style={{ transition: "opacity .4s ease .8s" }}>
+              <rect
+                x={x + 8} y={cp.adjustedY - 8}
+                width={chipW} height={16} rx={8}
+                fill="var(--surface-2)"
+                stroke={cp.color}
+                strokeOpacity="0.55"
+                strokeWidth="1"
               />
+              <text
+                x={x + 8 + chipW / 2} y={cp.adjustedY + 4.5}
+                textAnchor="middle"
+                fontSize="10"
+                fontFamily="var(--font-mono)"
+                fontWeight="700"
+                fill={cp.color}
+              >{cp.val}</text>
             </g>
           );
         })}
 
-        {hasData &&
-          series.map((s) => {
-            const v = data[lastIdx][s.key];
-            const x = xAt(lastIdx);
-            const y = yAt(v);
-            return (
-              <g
-                key={`chip-${s.key}`}
-                opacity={drawn ? 1 : 0}
-                style={{ transition: `opacity .5s ${0.6 + s.delay}s` }}
-              >
-                <rect
-                  x={x + 12}
-                  y={y - 9}
-                  width="32"
-                  height="18"
-                  rx="9"
-                  fill="var(--surface-1)"
-                  stroke={s.color}
-                  strokeOpacity="0.45"
-                  strokeWidth="1"
-                />
-                <text
-                  x={x + 28}
-                  y={y + 4}
-                  textAnchor="middle"
-                  fontSize="10"
-                  fontFamily="var(--font-mono)"
-                  fontWeight="700"
-                  fill={s.color}
-                >
-                  {v}
-                </text>
-              </g>
-            );
-          })}
-
-        {hoverIdx !== null && (
-          <line
-            x1={xAt(hoverIdx)}
-            y1={padT}
-            x2={xAt(hoverIdx)}
-            y2={padT + innerH}
-            stroke="rgba(239,68,68,0.3)"
-            strokeWidth="1"
-            strokeDasharray="3 4"
-          />
-        )}
-
+        {/* X-axis month labels */}
         {data.map((d, i) => (
           <text
             key={`m-${i}`}
-            x={xAt(i)}
-            y={h - 4}
+            x={xAt(i)} y={h - 6}
             textAnchor="middle"
-            fontSize="9.5"
+            fontSize="10"
             fontFamily="var(--font-mono)"
-            fontWeight="600"
+            fontWeight={hoverIdx === i ? "700" : "500"}
             fill={hoverIdx === i ? "var(--text-body)" : "var(--text-fainter)"}
-            style={{
-              letterSpacing: "1px",
-              textTransform: "uppercase",
-              transition: "fill .2s",
-            }}
+            opacity={hoverIdx === i ? 1 : 0.65}
+            style={{ letterSpacing: "0.8px", textTransform: "uppercase", transition: "all .15s" }}
           >
             {d.month}
           </text>
         ))}
       </svg>
 
+      {/* Hover tooltip — floats near the hovered column */}
       {hoverIdx !== null && hasData && (
         <div
           style={{
             position: "absolute",
-            top: 8,
-            right: 8,
+            top: 4,
+            ...(tooltipOnRight
+              ? { left: `calc(${((xAt(hoverIdx) + 16) / w) * 100}% )` }
+              : { right: `calc(${((w - xAt(hoverIdx) + 16) / w) * 100}%)` }
+            ),
             display: "flex",
             flexDirection: "column",
-            gap: 4,
-            padding: "10px 13px",
+            gap: 5,
+            padding: "10px 14px",
             borderRadius: 10,
-            background: "var(--surface-1)",
+            background: "var(--surface-2)",
             border: "1px solid var(--border-default)",
-            boxShadow: "var(--card-shadow-strong)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
             fontFamily: "var(--font-mono)",
             fontSize: 11,
-            minWidth: 140,
+            minWidth: 130,
             pointerEvents: "none",
-            animation: "fade-in .15s ease",
+            animation: "fade-in .12s ease",
+            zIndex: 10,
+            backdropFilter: "blur(8px)",
           }}
         >
-          <div
-            style={{
-              fontSize: 9,
-              color: "var(--text-fainter)",
-              letterSpacing: "1px",
-              textTransform: "uppercase",
-              marginBottom: 2,
-            }}
-          >
+          <div style={{ fontSize: 10, color: "var(--accent-text)", letterSpacing: "1px", textTransform: "uppercase", fontWeight: 700, marginBottom: 3, borderBottom: "1px solid var(--border-subtle)", paddingBottom: 5 }}>
             {data[hoverIdx].month}
           </div>
-          {series.map((s) => (
-            <div
-              key={s.key}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                alignItems: "center",
-              }}
-            >
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  color: "var(--text-soft)",
-                  textTransform: "capitalize",
-                }}
-              >
-                <span
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: "50%",
-                    background: s.color,
-                  }}
-                />
-                {s.key}
-              </span>
-              <span style={{ color: s.color, fontWeight: 700 }}>
-                {data[hoverIdx][s.key]}
-              </span>
-            </div>
-          ))}
+          {[...series].reverse().map((s) => {
+            const val = (data[hoverIdx] as any)[s.key] ?? 0;
+            return (
+              <div key={s.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-dim)", textTransform: "capitalize" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 2, background: s.color, boxShadow: `0 0 5px ${s.color}88`, display: "inline-block" }} />
+                  {s.label}
+                </span>
+                <span style={{ color: val > 0 ? s.color : "var(--text-quietest)", fontWeight: 700, minWidth: 24, textAlign: "right" }}>
+                  {val}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1052,6 +1010,15 @@ function activityIcon(type: string, severity: string) {
   if (type.includes("running")) return Activity;
   if (severity === "critical") return AlertTriangle;
   return Shield;
+}
+
+function relativeTime(ts: string | null | undefined): string {
+  if (!ts) return "—";
+  const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }
 
 const EMPTY_STATS: DashboardStats = {
@@ -1119,7 +1086,7 @@ export default function Dashboard() {
   const hasCritical = (vulns.critical ?? 0) > 0;
   const isScanning = stats.scans.running > 0;
 
-  /* Posture score: weighted severity penalty against a 100 baseline */
+  /* Posture score — kept for sparkline delta context only */
   const postureScore = useMemo(() => {
     const c = vulns.critical ?? 0;
     const h = vulns.high ?? 0;
@@ -1288,7 +1255,15 @@ export default function Dashboard() {
               minWidth: 0,
             }}
           >
-            <PostureRing score={postureScore} loading={loading} size={78} />
+            <PostureRing
+              totalVulns={totalVulns}
+              critical={vulns.critical ?? 0}
+              high={vulns.high ?? 0}
+              medium={vulns.medium ?? 0}
+              low={vulns.low ?? 0}
+              loading={loading}
+              size={78}
+            />
             {/* Vertical hairline divider */}
             <div
               aria-hidden
@@ -1545,7 +1520,7 @@ export default function Dashboard() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "340px 1fr 320px",
+          gridTemplateColumns: "250px 1fr 230px",
           gap: 22,
           marginBottom: 22,
         }}
@@ -1556,7 +1531,7 @@ export default function Dashboard() {
             background: "var(--surface-1)",
             border: "1px solid var(--border-default)",
             borderRadius: 14,
-            padding: "22px 22px",
+            padding: "18px 18px",
             boxShadow: "var(--card-shadow)",
             animation: "card-enter .5s cubic-bezier(0.16,1,0.3,1) .1s both",
           }}
@@ -1566,12 +1541,12 @@ export default function Dashboard() {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: 18,
+              marginBottom: 14,
             }}
           >
             <h3
               style={{
-                fontSize: 13,
+                fontSize: 12,
                 fontFamily: "var(--font-display)",
                 fontWeight: 700,
                 color: "var(--text-strong)",
@@ -1583,11 +1558,11 @@ export default function Dashboard() {
                 style={{
                   display: "inline-block",
                   width: 3,
-                  height: 12,
+                  height: 11,
                   background:
                     "linear-gradient(180deg, var(--critical), var(--medium))",
                   borderRadius: 2,
-                  marginRight: 9,
+                  marginRight: 8,
                   verticalAlign: "-2px",
                 }}
               />
@@ -1614,7 +1589,7 @@ export default function Dashboard() {
           </div>
 
           {/* Big total + stacked composition bar */}
-          <div style={{ marginBottom: 18 }}>
+          <div style={{ marginBottom: 12 }}>
             <div
               style={{
                 display: "flex",
@@ -1626,7 +1601,7 @@ export default function Dashboard() {
               <div
                 style={{
                   fontFamily: "var(--font-display)",
-                  fontSize: 30,
+                  fontSize: 26,
                   fontWeight: 700,
                   letterSpacing: "-1px",
                   lineHeight: 1,
@@ -1676,7 +1651,7 @@ export default function Dashboard() {
             background: "var(--surface-1)",
             border: "1px solid var(--border-default)",
             borderRadius: 14,
-            padding: "24px 28px",
+            padding: "18px 20px",
             display: "flex",
             flexDirection: "column",
             boxShadow: "var(--card-shadow)",
@@ -1727,12 +1702,13 @@ export default function Dashboard() {
                 Monthly vulnerability discovery rate
               </p>
             </div>
-            <div style={{ display: "flex", gap: 14 }}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               {(
                 [
                   ["Critical", "#EF4444"],
-                  ["High", "#F97316"],
-                  ["Medium", "#EAB308"],
+                  ["High",     "#F97316"],
+                  ["Medium",   "#EAB308"],
+                  ["Low",      "#22c55e"],
                 ] as const
               ).map(([l, c]) => (
                 <div
@@ -1740,18 +1716,19 @@ export default function Dashboard() {
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 6,
+                    gap: 5,
                     fontSize: 10,
                     fontFamily: "var(--font-mono)",
-                    color: "var(--text-fainter)",
+                    color: "var(--text-dim)",
                   }}
                 >
                   <div
                     style={{
-                      width: 7,
-                      height: 7,
+                      width: 18,
+                      height: 2.5,
                       borderRadius: 2,
                       background: c,
+                      boxShadow: `0 0 4px ${c}88`,
                     }}
                   />
                   {l}
@@ -1764,7 +1741,7 @@ export default function Dashboard() {
               flex: 1,
               display: "flex",
               alignItems: "flex-end",
-              marginTop: 20,
+              marginTop: 12,
             }}
           >
             <TrendGraph data={trends} loading={loading} />
@@ -1777,7 +1754,7 @@ export default function Dashboard() {
             background: "var(--surface-1)",
             border: "1px solid var(--border-default)",
             borderRadius: 14,
-            padding: "22px 18px",
+            padding: "18px 14px",
             display: "flex",
             flexDirection: "column",
             overflow: "hidden",
@@ -1945,7 +1922,7 @@ export default function Dashboard() {
                 </Link>
               </div>
             ) : (
-              stats.activity_feed.map((item, idx) => {
+              stats.activity_feed.slice(0, 5).map((item, idx) => {
                 const colors: Record<string, string> = {
                   critical: "var(--critical)",
                   high: "var(--high)",
@@ -1954,18 +1931,22 @@ export default function Dashboard() {
                   info: "var(--info)",
                   success: "var(--safe)",
                 };
-                const col = colors[item.severity] ?? "var(--info)";
+                const col = colors[item.severity] ?? "var(--safe)";
                 const Icon = activityIcon(item.type, item.severity);
+                const isRecent = item.timestamp
+                  ? Date.now() - new Date(item.timestamp).getTime() < 3_600_000
+                  : false;
                 return (
                   <div
                     key={item.id}
                     style={{
                       display: "flex",
-                      gap: 10,
-                      padding: "10px 12px",
-                      borderRadius: 10,
-                      animation: `slide-in .3s cubic-bezier(0.16,1,0.3,1) ${idx * 35}ms both`,
-                      transition: "background .2s",
+                      gap: 9,
+                      padding: "8px 10px",
+                      borderRadius: 9,
+                      animation: `slide-in .28s cubic-bezier(0.16,1,0.3,1) ${idx * 40}ms both`,
+                      transition: "background .15s",
+                      borderLeft: isRecent ? `2px solid ${col}` : "2px solid transparent",
                     }}
                     onMouseEnter={(e) =>
                       ((e.currentTarget as HTMLDivElement).style.background =
@@ -1978,26 +1959,27 @@ export default function Dashboard() {
                   >
                     <div
                       style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 9,
-                        background: `color-mix(in srgb, ${col} 12%, transparent)`,
+                        width: 28,
+                        height: 28,
+                        borderRadius: 8,
+                        background: `color-mix(in srgb, ${col} 10%, transparent)`,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         flexShrink: 0,
+                        marginTop: 1,
                       }}
                     >
-                      <Icon size={14} color={col} />
+                      <Icon size={13} color={col} />
                     </div>
                     <div style={{ overflow: "hidden", flex: 1 }}>
                       <div
                         style={{
-                          fontSize: 12.5,
+                          fontSize: 11.5,
                           fontFamily: "var(--font-display)",
                           fontWeight: 600,
                           color: "var(--text-strong)",
-                          marginBottom: 3,
+                          marginBottom: 2,
                           lineHeight: 1.3,
                           whiteSpace: "nowrap",
                           overflow: "hidden",
@@ -2008,7 +1990,7 @@ export default function Dashboard() {
                       </div>
                       <div
                         style={{
-                          fontSize: 10,
+                          fontSize: 9.5,
                           fontFamily: "var(--font-mono)",
                           color: "var(--text-fainter)",
                           display: "flex",
@@ -2016,11 +1998,9 @@ export default function Dashboard() {
                           gap: 4,
                         }}
                       >
-                        <Clock size={9} />
+                        <Clock size={8} />
                         <span suppressHydrationWarning>
-                          {item.timestamp
-                            ? new Date(item.timestamp).toLocaleTimeString()
-                            : "—"}
+                          {relativeTime(item.timestamp)}
                         </span>
                       </div>
                     </div>
@@ -2029,6 +2009,21 @@ export default function Dashboard() {
               })
             )}
           </div>
+          {stats.activity_feed.length > 5 && (
+            <div
+              style={{
+                marginTop: 8,
+                paddingTop: 8,
+                borderTop: "1px solid var(--border-subtle)",
+                textAlign: "center",
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+                color: "var(--text-fainter)",
+              }}
+            >
+              +{stats.activity_feed.length - 5} more events
+            </div>
+          )}
         </div>
       </div>
 

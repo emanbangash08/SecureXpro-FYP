@@ -48,7 +48,13 @@
       "Bash(powershell -Command \"wsl -d Ubuntu -- docker stop zap-apitest\")",
       "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('tailwindcss:', p.dependencies?.tailwindcss||p.devDependencies?.tailwindcss\\); console.log\\('next:', p.dependencies?.next\\); console.log\\('new deps:', Object.keys\\({...p.dependencies,...p.devDependencies}\\).filter\\(k=>['framer-motion','recharts','lucide-react','@radix-ui/react-slot'].includes\\(k\\)\\)\\)\")",
       "Bash(node -e \"try{require\\('recharts'\\);console.log\\('recharts OK'\\)}catch\\(e\\){console.log\\('recharts MISSING'\\)}; try{require\\('framer-motion'\\);console.log\\('framer-motion OK'\\)}catch\\(e\\){console.log\\('framer-motion MISSING'\\)}\")",
-      "Bash(python -c \"import sys,json; p=json.load\\(sys.stdin\\); deps={**p.get\\('dependencies',{}\\), **p.get\\('devDependencies',{}\\)}; [print\\(k,v\\) for k,v in deps.items\\(\\) if 'motion' in k.lower\\(\\) or 'anime' in k.lower\\(\\) or 'gsap' in k.lower\\(\\)]\")"
+      "Bash(python -c \"import sys,json; p=json.load\\(sys.stdin\\); deps={**p.get\\('dependencies',{}\\), **p.get\\('devDependencies',{}\\)}; [print\\(k,v\\) for k,v in deps.items\\(\\) if 'motion' in k.lower\\(\\) or 'anime' in k.lower\\(\\) or 'gsap' in k.lower\\(\\)]\")",
+      "Bash(venv\\\\Scripts\\\\pip install *)",
+      "Bash(./venv/Scripts/pip install *)",
+      "Bash(Get-ChildItem -Path \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(grep -E \"\\\\.\\(tsx|ts|jsx|js\\)$\")",
+      "Bash(xargs grep -l \"report\")"
     ],
     "additionalDirectories": [
       "e:\\flutter projects\\FYP\\SecureXpro-FYP\\app\\api\\v1"
