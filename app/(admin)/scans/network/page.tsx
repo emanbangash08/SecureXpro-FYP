@@ -282,9 +282,10 @@ export default function NetworkScanPage() {
   const [traceroute, setTraceroute] = useState(false);
   const [udpScan, setUdpScan] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "hosts" | "ports" | "vulns" | "report"
+    "hosts" | "ports" | "vulns" | "exploits" | "report"
   >("hosts");
   const [expandedVuln, setExpandedVuln] = useState<string | null>(null);
+  const [expandedExploit, setExpandedExploit] = useState<string | null>(null);
 
   // Global scan context
   const ctx = useScanContext()!;
@@ -292,6 +293,7 @@ export default function NetworkScanPage() {
     scan,
     logs,
     vulns,
+    exploits,
     report,
     recentScans,
     activeStageId,
@@ -372,6 +374,16 @@ export default function NetworkScanPage() {
   );
 
   const rs = scan?.risk_summary;
+
+  // "Actionable" exploits = ones the EXPLOITS FOUND tile counts:
+  //   exploit_available=true (KEV or EPSS ≥ 0.4)  OR  has any Metasploit module.
+  // Theoretical-only findings (no MSF, no KEV, low EPSS) are hidden from the
+  // tab so the count matches the top KPI tile.
+  const actionableExploits = (exploits?.items ?? []).filter(
+    (x) => x.exploit_available || x.metasploit_module_count > 0,
+  );
+  const theoreticalExploitCount =
+    (exploits?.items.length ?? 0) - actionableExploits.length;
 
   const getStageStatus = (id: PipelineStageId) => {
     if (completedStages.has(id)) return "done";
@@ -1570,11 +1582,13 @@ export default function NetworkScanPage() {
                             fontSize: 15,
                             fontFamily: "var(--font-display)",
                             fontWeight: 700,
+                            // Theme-aware: white in dark mode, near-black in light.
+                            // Hardcoded white made this row unreadable on light-mode tints.
                             color:
                               status === "done"
                                 ? s.color
                                 : status === "active"
-                                  ? "#ffffff"
+                                  ? "var(--text-strong)"
                                   : "var(--text-dim)",
                             letterSpacing: "-.3px",
                             marginBottom: 3,
@@ -2212,52 +2226,56 @@ export default function NetworkScanPage() {
               gap: 6,
             }}
           >
-            {(["hosts", "ports", "vulns", "report"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setActiveTab(t)}
-                style={{
-                  padding: "14px 18px",
-                  background: "none",
-                  border: "none",
-                  borderBottom: `2px solid ${activeTab === t ? "#00e5cc" : "transparent"}`,
-                  color:
-                    activeTab === t
-                      ? "var(--accent-text)"
-                      : "var(--text-fainter)",
-                  fontSize: 11,
-                  fontFamily: "var(--font-mono)",
-                  cursor: "pointer",
-                  textTransform: "uppercase",
-                  letterSpacing: "1.3px",
-                  transition: "all .2s",
-                  fontWeight: activeTab === t ? 700 : 500,
-                  position: "relative",
-                }}
-              >
-                {t === "hosts"
-                  ? "Hosts Map"
-                  : t === "ports"
-                    ? "Open Ports"
-                    : t === "vulns"
-                      ? `Vulnerabilities (${vulns.length})`
-                      : "Report"}
-                {activeTab === t && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      bottom: -2,
-                      left: 0,
-                      right: 0,
-                      height: 2,
-                      background: "#00e5cc",
-                      boxShadow: "0 0 10px #00e5cc",
-                      borderRadius: 2,
-                    }}
-                  />
-                )}
-              </button>
-            ))}
+            {(["hosts", "ports", "vulns", "exploits", "report"] as const).map(
+              (t) => (
+                <button
+                  key={t}
+                  onClick={() => setActiveTab(t)}
+                  style={{
+                    padding: "14px 18px",
+                    background: "none",
+                    border: "none",
+                    borderBottom: `2px solid ${activeTab === t ? "#00e5cc" : "transparent"}`,
+                    color:
+                      activeTab === t
+                        ? "var(--accent-text)"
+                        : "var(--text-fainter)",
+                    fontSize: 11,
+                    fontFamily: "var(--font-mono)",
+                    cursor: "pointer",
+                    textTransform: "uppercase",
+                    letterSpacing: "1.3px",
+                    transition: "all .2s",
+                    fontWeight: activeTab === t ? 700 : 500,
+                    position: "relative",
+                  }}
+                >
+                  {t === "hosts"
+                    ? "Hosts Map"
+                    : t === "ports"
+                      ? "Open Ports"
+                      : t === "vulns"
+                        ? `Vulnerabilities (${vulns.length})`
+                        : t === "exploits"
+                          ? `Exploits (${actionableExploits.length})`
+                          : "Report"}
+                  {activeTab === t && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: -2,
+                        left: 0,
+                        right: 0,
+                        height: 2,
+                        background: "#00e5cc",
+                        boxShadow: "0 0 10px #00e5cc",
+                        borderRadius: 2,
+                      }}
+                    />
+                  )}
+                </button>
+              ),
+            )}
           </div>
 
           <div style={{ padding: "24px 28px" }} key={activeTab}>
@@ -2827,6 +2845,495 @@ export default function NetworkScanPage() {
                       )}
                     </div>
                   ))}
+                </div>
+              ))}
+
+            {/* Exploits tab — Module 3 enrichment */}
+            {activeTab === "exploits" &&
+              (!exploits || actionableExploits.length === 0 ? (
+                <div
+                  style={{
+                    color: "var(--text-fainter)",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 12,
+                    textAlign: "center",
+                    padding: 36,
+                  }}
+                >
+                  {!exploits
+                    ? "No exploit data yet. Run a vulnerability or full scan to populate."
+                    : theoreticalExploitCount > 0
+                      ? `No actionable exploits identified. ${theoreticalExploitCount} CVE${theoreticalExploitCount === 1 ? " was" : "s were"} analysed but only have theoretical signals (no public exploit, no KEV listing, low EPSS).`
+                      : "Analysis ran but no exploit-enrichable CVEs were found."}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 14,
+                    animation: "fade-in .25s ease",
+                  }}
+                >
+                  {/* Summary strip */}
+                  {exploits.summary && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(4, 1fr)",
+                        gap: 10,
+                        marginBottom: 6,
+                      }}
+                    >
+                      {[
+                        {
+                          label: "Trivial",
+                          value: exploits.summary.by_label.trivial ?? 0,
+                          color: "#ff2a5f",
+                        },
+                        {
+                          label: "Easy",
+                          value: exploits.summary.by_label.easy ?? 0,
+                          color: "#ff7a00",
+                        },
+                        {
+                          label: "Moderate",
+                          value: exploits.summary.by_label.moderate ?? 0,
+                          color: "#ffcc00",
+                        },
+                        {
+                          label: "MSF Hits",
+                          value: exploits.summary.msf_modules_found ?? 0,
+                          color: "#00e5cc",
+                        },
+                      ].map((tile) => (
+                        <div
+                          key={tile.label}
+                          style={{
+                            background: "var(--surface-1)",
+                            border: `1px solid ${tile.color}30`,
+                            borderRadius: 10,
+                            padding: "12px 14px",
+                            textAlign: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 22,
+                              fontFamily: "var(--font-display)",
+                              fontWeight: 800,
+                              color: tile.color,
+                              lineHeight: 1,
+                            }}
+                          >
+                            {tile.value}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 10,
+                              fontFamily: "var(--font-mono)",
+                              color: "var(--text-faintest)",
+                              textTransform: "uppercase",
+                              letterSpacing: "1px",
+                              marginTop: 4,
+                            }}
+                          >
+                            {tile.label}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Per-exploit cards — only actionable findings */}
+                  {actionableExploits.map((x) => {
+                    const lbl = x.feasibility_label ?? "theoretical";
+                    const color =
+                      lbl === "trivial"
+                        ? "#ff2a5f"
+                        : lbl === "easy"
+                          ? "#ff7a00"
+                          : lbl === "moderate"
+                            ? "#ffcc00"
+                            : lbl === "hard"
+                              ? "#4d9eff"
+                              : "var(--text-fainter)";
+                    const open = expandedExploit === x.id;
+                    return (
+                      <div
+                        key={x.id}
+                        style={{
+                          background: "var(--surface-1)",
+                          border: `1px solid ${color}28`,
+                          borderRadius: 11,
+                          overflow: "hidden",
+                          transition: "border-color .2s",
+                        }}
+                      >
+                        {/* Header (clickable) */}
+                        <div
+                          onClick={() => setExpandedExploit(open ? null : x.id)}
+                          style={{
+                            padding: "13px 18px",
+                            background: `linear-gradient(90deg, ${color}10, transparent 60%)`,
+                            borderBottom: open
+                              ? `1px solid ${color}1a`
+                              : "none",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            cursor: "pointer",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontFamily: "var(--font-mono)",
+                                padding: "3px 9px",
+                                borderRadius: 20,
+                                background: `${color}18`,
+                                color,
+                                border: `1px solid ${color}35`,
+                                textTransform: "uppercase",
+                                letterSpacing: "1px",
+                                fontWeight: 700,
+                              }}
+                            >
+                              {lbl}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 14,
+                                fontFamily: "var(--font-display)",
+                                fontWeight: 700,
+                                color: "var(--text-strong)",
+                              }}
+                            >
+                              {x.cve_id}
+                            </span>
+                            {(x.exploit_categories ?? [])
+                              .slice(0, 3)
+                              .map((c) => (
+                                <span
+                                  key={c}
+                                  style={{
+                                    fontSize: 9.5,
+                                    padding: "2px 7px",
+                                    borderRadius: 5,
+                                    background:
+                                      "color-mix(in srgb, var(--accent) 12%, transparent)",
+                                    color: "var(--accent-text)",
+                                    border:
+                                      "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+                                    fontFamily: "var(--font-mono)",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.6px",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {c.replace("_", " ")}
+                                </span>
+                              ))}
+                            {x.in_kev && (
+                              <span
+                                style={{
+                                  fontSize: 9.5,
+                                  padding: "2px 7px",
+                                  borderRadius: 5,
+                                  background: "#ff2a5f15",
+                                  color: "#ff2a5f",
+                                  border: "1px solid #ff2a5f30",
+                                  fontFamily: "var(--font-mono)",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                KEV
+                              </span>
+                            )}
+                            {x.metasploit_module_count > 0 && (
+                              <span
+                                style={{
+                                  fontSize: 9.5,
+                                  padding: "2px 7px",
+                                  borderRadius: 5,
+                                  background: "rgba(0,229,204,0.10)",
+                                  color: "#00e5cc",
+                                  border: "1px solid rgba(0,229,204,0.30)",
+                                  fontFamily: "var(--font-mono)",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                msf × {x.metasploit_module_count}
+                              </span>
+                            )}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 12,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontFamily: "var(--font-mono)",
+                                color: "var(--text-faintest)",
+                              }}
+                            >
+                              {x.affected_host}
+                              {x.affected_port
+                                ? `:${x.affected_port}`
+                                : ""} · {x.affected_service}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 18,
+                                fontFamily: "var(--font-display)",
+                                fontWeight: 800,
+                                color,
+                                minWidth: 36,
+                                textAlign: "right",
+                              }}
+                            >
+                              {Math.round(x.feasibility_score ?? 0)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Body (expanded) */}
+                        {open && (
+                          <div style={{ padding: "14px 18px" }}>
+                            {/* CVSS metrics */}
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                marginBottom: 14,
+                              }}
+                            >
+                              {(
+                                [
+                                  ["AV", x.attack_vector],
+                                  ["AC", x.attack_complexity],
+                                  ["PR", x.privileges_required],
+                                  ["UI", x.user_interaction],
+                                ] as const
+                              ).map(([k, v]) => (
+                                <div
+                                  key={k}
+                                  style={{
+                                    background: "var(--surface-2)",
+                                    border: "1px solid var(--border-default)",
+                                    borderRadius: 7,
+                                    padding: "5px 10px",
+                                    fontSize: 10.5,
+                                    fontFamily: "var(--font-mono)",
+                                  }}
+                                >
+                                  <span
+                                    style={{ color: "var(--text-faintest)" }}
+                                  >
+                                    {k}:{" "}
+                                  </span>
+                                  <span
+                                    style={{
+                                      color: "var(--text-body)",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {(v ?? "n/a").toString().toUpperCase()}
+                                  </span>
+                                </div>
+                              ))}
+                              <div
+                                style={{
+                                  background: "var(--surface-2)",
+                                  border: "1px solid var(--border-default)",
+                                  borderRadius: 7,
+                                  padding: "5px 10px",
+                                  fontSize: 10.5,
+                                  fontFamily: "var(--font-mono)",
+                                }}
+                              >
+                                <span style={{ color: "var(--text-faintest)" }}>
+                                  CVSS:{" "}
+                                </span>
+                                <span
+                                  style={{
+                                    color: "var(--text-body)",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {(x.cvss_score ?? 0).toFixed(1)}
+                                </span>
+                              </div>
+                              {x.epss_score != null && (
+                                <div
+                                  style={{
+                                    background: "var(--surface-2)",
+                                    border: "1px solid var(--border-default)",
+                                    borderRadius: 7,
+                                    padding: "5px 10px",
+                                    fontSize: 10.5,
+                                    fontFamily: "var(--font-mono)",
+                                  }}
+                                >
+                                  <span
+                                    style={{ color: "var(--text-faintest)" }}
+                                  >
+                                    EPSS:{" "}
+                                  </span>
+                                  <span
+                                    style={{
+                                      color: "var(--text-body)",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {(x.epss_score * 100).toFixed(1)}%
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Metasploit modules */}
+                            {x.metasploit_modules.length > 0 && (
+                              <div style={{ marginBottom: 14 }}>
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    fontFamily: "var(--font-mono)",
+                                    color: "var(--text-faintest)",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "1px",
+                                    marginBottom: 7,
+                                  }}
+                                >
+                                  Metasploit modules (search-only)
+                                </div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 5,
+                                  }}
+                                >
+                                  {x.metasploit_modules.map((m) => (
+                                    <div
+                                      key={m.fullname}
+                                      style={{
+                                        padding: "7px 11px",
+                                        background: "rgba(0,229,204,0.05)",
+                                        border:
+                                          "1px solid rgba(0,229,204,0.18)",
+                                        borderRadius: 7,
+                                        fontSize: 11,
+                                        fontFamily: "var(--font-mono)",
+                                        display: "flex",
+                                        gap: 10,
+                                        flexWrap: "wrap",
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          color: "#00e5cc",
+                                          fontWeight: 600,
+                                          wordBreak: "break-all",
+                                          flex: 1,
+                                        }}
+                                      >
+                                        {m.fullname}
+                                      </span>
+                                      <span
+                                        style={{
+                                          color: "var(--text-faintest)",
+                                        }}
+                                      >
+                                        rank: {m.rank}
+                                      </span>
+                                      {m.disclosure_date && (
+                                        <span
+                                          style={{
+                                            color: "var(--text-faintest)",
+                                          }}
+                                        >
+                                          {m.disclosure_date}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Attack chain */}
+                            {x.attack_chain && (
+                              <div
+                                style={{
+                                  fontSize: 11.5,
+                                  fontFamily: "var(--font-mono)",
+                                  lineHeight: 1.65,
+                                  color: "var(--text-dim)",
+                                  background: "var(--surface-2)",
+                                  border: "1px dashed var(--border-default)",
+                                  borderRadius: 8,
+                                  padding: "12px 14px",
+                                  whiteSpace: "pre-line",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize: 10,
+                                    color: "var(--text-faintest)",
+                                    textTransform: "uppercase",
+                                    letterSpacing: "1px",
+                                    marginBottom: 8,
+                                  }}
+                                >
+                                  Attack chain (non-intrusive simulation)
+                                </div>
+                                {x.attack_chain}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Footer: theoretical CVEs that were analysed but not shown */}
+                  {theoreticalExploitCount > 0 && (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        padding: "11px 14px",
+                        borderRadius: 8,
+                        background: "var(--surface-2)",
+                        border: "1px dashed var(--border-default)",
+                        fontSize: 11,
+                        fontFamily: "var(--font-mono)",
+                        color: "var(--text-fainter)",
+                        textAlign: "center",
+                      }}
+                    >
+                      + {theoreticalExploitCount} additional CVE
+                      {theoreticalExploitCount === 1 ? "" : "s"} analysed but
+                      classified as <strong>theoretical</strong> (no public
+                      exploit, not in CISA KEV, EPSS &lt; 40 %).
+                    </div>
+                  )}
                 </div>
               ))}
 

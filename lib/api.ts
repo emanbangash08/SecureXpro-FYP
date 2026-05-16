@@ -238,6 +238,103 @@ export interface ReportContent {
   }>;
 }
 
+// ─── Module 3 — Exploit Intelligence ───────────────────────────────────────
+
+export type ExploitFeasibilityLabel =
+  | "trivial"
+  | "easy"
+  | "moderate"
+  | "hard"
+  | "theoretical";
+
+export type ExploitCategory =
+  | "rce"
+  | "auth_bypass"
+  | "info_disclosure"
+  | "misconfiguration"
+  | "dos"
+  | "other";
+
+export interface ApiMetasploitModule {
+  name: string;
+  fullname: string;
+  type: string;
+  rank: string;
+  disclosure_date: string | null;
+}
+
+export interface ApiExploitItem {
+  id: string;
+  cve_id: string;
+  title: string;
+  severity: string;
+  cvss_score: number;
+  cvss_vector: string;
+  cwe_ids: string[];
+  affected_host: string;
+  affected_port: number | null;
+  affected_service: string;
+  exploit_available: boolean;
+  in_kev: boolean;
+  epss_score: number | null;
+  epss_percentile: number | null;
+  // Module-3 enrichment
+  exploit_categories: ExploitCategory[];
+  attack_vector: "network" | "adjacent" | "local" | "physical" | null;
+  attack_complexity: "low" | "high" | null;
+  privileges_required: "none" | "low" | "high" | null;
+  user_interaction: "none" | "required" | null;
+  metasploit_modules: ApiMetasploitModule[];
+  metasploit_module_count: number;
+  feasibility_score: number | null;
+  feasibility_label: ExploitFeasibilityLabel | null;
+  attack_chain: string | null;
+}
+
+export interface ApiExploitSummary {
+  total_analysed: number;
+  msf_modules_found: number;
+  vulns_with_msf: number;
+  by_label: Partial<Record<ExploitFeasibilityLabel, number>>;
+  by_category: Partial<Record<ExploitCategory, number>>;
+  top_findings: Array<{
+    cve_id: string;
+    affected_host: string;
+    affected_port: number | null;
+    feasibility_score: number;
+    feasibility_label: ExploitFeasibilityLabel;
+    exploit_categories: ExploitCategory[];
+    metasploit_module_count: number;
+  }>;
+}
+
+export interface ApiExploitListOut {
+  scan_id: string;
+  total: number;
+  summary: ApiExploitSummary | null;
+  items: ApiExploitItem[];
+}
+
+/** Cross-scan exploit feed used by the admin sidebar "Exploits" page. */
+export interface ApiExploitFeedItem extends ApiExploitItem {
+  scan_id: string;
+  scan_target: string | null;
+  scan_type: string | null;
+  scan_completed_at: string | null;
+  created_at: string | null;
+}
+
+export interface ApiExploitFeedOut {
+  total: number;
+  summary: {
+    by_label: Partial<Record<ExploitFeasibilityLabel, number>>;
+    by_category: Partial<Record<ExploitCategory, number>>;
+    with_msf: number;
+    scans_covered: number;
+  };
+  items: ApiExploitFeedItem[];
+}
+
 export interface DashboardStats {
   scans: { total: number; running: number; completed: number; failed: number };
   vulnerabilities: Record<string, number>;
@@ -317,6 +414,29 @@ export const api = {
 
     getReport: (scanId: string) =>
       request<import("./types").ScanReport>(`/api/v1/scans/${scanId}/report`),
+
+    /**
+     * Module 3 — Exploit Intelligence: enriched CVE findings for this scan.
+     *
+     * Optional filters:
+     *   label     "trivial" | "easy" | "moderate" | "hard" | "theoretical"
+     *   category  "rce" | "auth_bypass" | "info_disclosure" | "misconfiguration" | "dos" | "other"
+     *   min_score 0–100
+     */
+    getExploits: (
+      scanId: string,
+      params?: { label?: string; category?: string; min_score?: number },
+    ) => {
+      const qs = new URLSearchParams();
+      if (params?.label) qs.set("label", params.label);
+      if (params?.category) qs.set("category", params.category);
+      if (params?.min_score != null)
+        qs.set("min_score", String(params.min_score));
+      const q = qs.toString();
+      return request<ApiExploitListOut>(
+        `/api/v1/scans/${scanId}/exploits${q ? `?${q}` : ""}`,
+      );
+    },
   },
 
   vulnerabilities: {
@@ -410,6 +530,40 @@ export const api = {
       request<ReportContent>(`/api/v1/reports/${id}/content`),
     delete: (id: string) =>
       request<void>(`/api/v1/reports/${id}`, { method: "DELETE" }),
+  },
+
+  /**
+   * Module 3 — cross-scan exploit feed for the admin "Exploits" page.
+   * Mirrors api.vulnerabilities.getAll() but returns Module-3 enriched data.
+   */
+  exploits: {
+    list: (params?: {
+      label?: ExploitFeasibilityLabel;
+      category?: ExploitCategory;
+      min_score?: number;
+      only_msf?: boolean;
+      skip?: number;
+      limit?: number;
+    }) => {
+      const qs = new URLSearchParams();
+      if (params?.label) qs.set("label", params.label);
+      if (params?.category) qs.set("category", params.category);
+      if (params?.min_score != null)
+        qs.set("min_score", String(params.min_score));
+      if (params?.only_msf) qs.set("only_msf", "true");
+      if (params?.skip != null) qs.set("skip", String(params.skip));
+      if (params?.limit != null) qs.set("limit", String(params.limit));
+      const q = qs.toString();
+      return request<ApiExploitFeedOut>(`/api/v1/exploits/${q ? `?${q}` : ""}`);
+    },
+    get: (id: string) =>
+      request<
+        ApiExploitItem & {
+          scan_target?: string;
+          scan_type?: string;
+          scan_completed_at?: string;
+        }
+      >(`/api/v1/exploits/${id}`),
   },
 
   admin: {

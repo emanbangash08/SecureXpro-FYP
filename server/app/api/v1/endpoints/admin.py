@@ -88,8 +88,37 @@ async def delete_user(
     db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: UserOut = Depends(require_admin),
 ):
+    """
+    Delete a user and cascade-clean their scans + every artefact derived
+    from those scans (vulnerabilities, scan_logs, reports). Any of the
+    user's running/pending Celery tasks are revoked first so the worker
+    doesn't keep writing to collections we're about to delete from.
+    """
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    # Gather the user's scan ids before deletion so we can cascade
+    scan_docs = await db.scans.find(
+        {"user_id": user_id},
+        {"_id": 1, "task_id": 1, "status": 1},
+    ).to_list(length=None)
+    scan_ids = [str(d["_id"]) for d in scan_docs]
+
+    # Revoke any in-flight Celery tasks
+    from app.services.scan_service import _revoke_task
+    for d in scan_docs:
+        if d.get("task_id") and d.get("status") in ("pending", "running"):
+            _revoke_task(d["task_id"])
+
+    # Cascade — child collections first, then scans, then the user record
+    if scan_ids:
+        await db.vulnerabilities.delete_many({"scan_id": {"$in": scan_ids}})
+        await db.reports.delete_many({"scan_id": {"$in": scan_ids}})
+        await db.scan_logs.delete_many({"scan_id": {"$in": scan_ids}})
+        await db.scans.delete_many(
+            {"_id": {"$in": [ObjectId(s) for s in scan_ids]}},
+        )
+
     result = await db.users.delete_one({"_id": ObjectId(user_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")

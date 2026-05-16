@@ -499,43 +499,128 @@ async def _execute_scan(scan_id: str) -> None:
             await _log(db, scan_id, "web_nikto", "success",
                        f"  [+] Web assessment complete — {len(_all_web)} total finding(s)")
 
-        # ── Phase 4: Exploit Analysis ─────────────────────────────────────────
+        # ── Phase 4: Exploit Intelligence & Analysis (Module 3) ──────────────
         if scan_type in (ScanType.VULNERABILITY.value, ScanType.FULL.value):
+            from app.services import exploit_service, metasploit_index
+
             await _set_phase(db, scan_id, "exploit_analysis")
             await _log(db, scan_id, "exploit_analysis", "cmd",
-                       "> securex-exploit --check-kev --check-epss --source nvd")
+                       "> securex-exploit --classify --msf-lookup --cvss-vector --feasibility")
             await _log(db, scan_id, "exploit_analysis", "info",
-                       "  Cross-referencing CISA Known Exploited Vulnerabilities list...")
+                       "  Loading Metasploit module index (rapid7 metadata, search-only)...")
 
-            exploit_count = 0
-            cursor = db.vulnerabilities.find(
-                {"scan_id": scan_id, "exploit_available": True}
-            ).sort("cvss_score", -1)
-            async for v in cursor:
-                exploit_count += 1
+            # Make sure the MSF metadata cache is loaded before analysis starts.
+            try:
+                idx = await metasploit_index.get_index()
+                if idx.is_ready():
+                    await _log(db, scan_id, "exploit_analysis", "info",
+                               f"  Indexed {idx.total_modules} Metasploit modules "
+                               f"covering {idx.indexed_cves} CVEs "
+                               f"(cache age {idx.source_age_days:.1f}d)")
+                else:
+                    await _log(db, scan_id, "exploit_analysis", "warning",
+                               "  [!] Metasploit metadata unavailable — skipping module lookup")
+            except Exception as _msf_exc:
+                await _log(db, scan_id, "exploit_analysis", "warning",
+                           f"  [!] Metasploit index load failed: {_msf_exc}")
+
+            await _log(db, scan_id, "exploit_analysis", "info",
+                       "  Classifying findings (RCE / auth-bypass / info-disclosure / misconfig / DoS)...")
+            await _log(db, scan_id, "exploit_analysis", "info",
+                       "  Parsing CVSS vectors for AC / PR / AV / UI...")
+            await _log(db, scan_id, "exploit_analysis", "info",
+                       "  Computing composite feasibility score (non-intrusive simulation)...")
+
+            try:
+                summary = await exploit_service.analyse_scan_exploits(db, scan_id)
+            except Exception as _exp_exc:
                 await _log(db, scan_id, "exploit_analysis", "error",
-                           f"  [!] {v['cve_id']}  CVSS:{v['cvss_score']}  — exploit available")
+                           f"  [ERROR] Exploit analysis failed: {_exp_exc}")
+                summary = None
 
-            if exploit_count:
-                await _log(db, scan_id, "exploit_analysis", "error",
-                           f"  [!] {exploit_count} active exploit(s) found — immediate patching required")
-            else:
-                await _log(db, scan_id, "exploit_analysis", "success",
-                           "  [+] No active exploits found for discovered CVEs")
+            if summary:
+                await _log(db, scan_id, "exploit_analysis", "info",
+                           f"  Analysed {summary.total_analysed} CVE(s); "
+                           f"{summary.vulns_with_msf} have a Metasploit match "
+                           f"({summary.msf_modules_found} module hits total).")
 
+                # Feasibility-bucket breakdown (most-feasible first)
+                for label in ("trivial", "easy", "moderate", "hard", "theoretical"):
+                    n = summary.by_label.get(label, 0)
+                    if n:
+                        lvl = "error" if label in ("trivial", "easy") else "warning" if label == "moderate" else "info"
+                        await _log(db, scan_id, "exploit_analysis", lvl,
+                                   f"  {label.upper():<12} ×{n}")
+
+                # Category breakdown
+                if summary.by_category:
+                    parts = []
+                    for cat in ("rce", "auth_bypass", "info_disclosure", "misconfiguration", "dos", "other"):
+                        n = summary.by_category.get(cat, 0)
+                        if n:
+                            parts.append(f"{cat}={n}")
+                    if parts:
+                        await _log(db, scan_id, "exploit_analysis", "info",
+                                   "  Categories: " + ", ".join(parts))
+
+                # Top-5 most-feasible findings
+                for top in summary.top_findings:
+                    tag = "  [!]" if top["feasibility_label"] in ("trivial", "easy") else "  [.]"
+                    extra = ""
+                    if top["metasploit_module_count"]:
+                        extra = f"  msf×{top['metasploit_module_count']}"
+                    await _log(db, scan_id, "exploit_analysis", "error" if "!" in tag else "warning",
+                               f"{tag} {top['cve_id']}  feasibility={top['feasibility_score']:.0f} "
+                               f"({top['feasibility_label']}){extra}")
+
+                if summary.total_analysed and summary.by_label.get("trivial", 0) + summary.by_label.get("easy", 0) > 0:
+                    await _log(db, scan_id, "exploit_analysis", "error",
+                               "  [!] Trivial/easy exploits exist — prioritise patching these immediately.")
+                elif summary.total_analysed:
+                    await _log(db, scan_id, "exploit_analysis", "success",
+                               "  [+] No trivial-feasibility paths found.")
+                else:
+                    await _log(db, scan_id, "exploit_analysis", "info",
+                               "  No CVEs to analyse (no service-correlated vulnerabilities).")
+
+            # Keep the legacy counter so existing UI summaries still resolve.
+            exploit_count = await db.vulnerabilities.count_documents({
+                "scan_id": scan_id,
+                "exploit_available": True,
+            })
             await db.scans.update_one(
                 {"_id": ObjectId(scan_id)},
-                {"$set": {"exploit_count": exploit_count, "updated_at": datetime.now(timezone.utc)}},
+                {"$set": {
+                    "exploit_count": exploit_count,
+                    "exploit_summary": (
+                        {
+                            "total_analysed":      summary.total_analysed,
+                            "msf_modules_found":   summary.msf_modules_found,
+                            "vulns_with_msf":      summary.vulns_with_msf,
+                            "by_label":            summary.by_label,
+                            "by_category":         summary.by_category,
+                            "top_findings":        summary.top_findings,
+                        }
+                        if summary else None
+                    ),
+                    "updated_at": datetime.now(timezone.utc),
+                }},
             )
 
         # ── Phase 5: Risk Scoring ─────────────────────────────────────────────
         await _set_phase(db, scan_id, "risk_scoring")
         await _log(db, scan_id, "risk_scoring", "cmd",
-                   "> securex-risk --cvss-v3 --environmental --composite")
+                   "> securex-risk --cvss-v3 --kev --exploit-weight --exposure --cia")
         await _log(db, scan_id, "risk_scoring", "info",
-                   "  Applying CVSS v3.1 environmental scoring...")
+                   "  Applying CVSS v3.1 baseline severity...")
+        await _log(db, scan_id, "risk_scoring", "info",
+                   "  Folding in exploit availability (CISA KEV + EPSS + Metasploit)...")
+        await _log(db, scan_id, "risk_scoring", "info",
+                   "  Classifying service exposure (internal vs external)...")
+        await _log(db, scan_id, "risk_scoring", "info",
+                   "  Aggregating CIA-triad impact across findings...")
 
-        risk_summary = await risk_service.compute_risk_summary(db, scan_id)
+        risk_summary = await risk_service.compute_risk_summary(db, scan_id, target)
 
         if risk_summary and risk_summary.get("total", 0) > 0:
             crit  = risk_summary.get("critical", 0)
@@ -544,9 +629,26 @@ async def _execute_scan(scan_id: str) -> None:
             low   = risk_summary.get("low", 0)
             max_s = risk_summary.get("max_cvss_score", 0)
             risk  = risk_summary.get("overall_risk", "info").upper()
+            base  = risk_summary.get("baseline_risk", "info").upper()
+            kev   = risk_summary.get("kev_count", 0)
+            xploits = risk_summary.get("exploit_count", 0)
+            expo  = (risk_summary.get("exposure") or "unknown").upper()
+            cia   = risk_summary.get("cia_high", {}) or {}
+
             await _log(db, scan_id, "risk_scoring", "info",
                        f"  Critical ×{crit}  High ×{high}  Medium ×{med}  Low ×{low}")
-            await _log(db, scan_id, "risk_scoring", "info", f"  Max CVSS Score: {max_s}")
+            await _log(db, scan_id, "risk_scoring", "info",
+                       f"  Max CVSS: {max_s}  ·  Baseline severity: {base}")
+            await _log(db, scan_id, "risk_scoring", "info",
+                       f"  Exposure: {expo}  ·  KEV: {kev}  ·  Public exploits: {xploits}")
+            await _log(db, scan_id, "risk_scoring", "info",
+                       f"  CIA-high impact — C:{cia.get('confidentiality', 0)}  "
+                       f"I:{cia.get('integrity', 0)}  A:{cia.get('availability', 0)}")
+
+            for reason in risk_summary.get("escalation_reasons", []):
+                await _log(db, scan_id, "risk_scoring", "warning",
+                           f"  [!] Risk escalated: {reason}")
+
             await _log(db, scan_id, "risk_scoring",
                        "error" if risk in ("CRITICAL", "HIGH") else "success",
                        f"  [!] Composite Risk Score: {risk}")
