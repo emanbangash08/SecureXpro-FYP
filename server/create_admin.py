@@ -6,7 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 EMAIL    = "superadmin@securex.pro"
 PASSWORD = "Admin@123"
-USERNAME = "superadmin"
+USERNAME = "admin"
 
 async def create():
     client = AsyncIOMotorClient(settings.MONGODB_URL)

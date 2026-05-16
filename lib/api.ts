@@ -160,6 +160,35 @@ export interface AdminScanListOut {
   items: AdminScan[]
 }
 
+export interface AdminReport {
+  id: string
+  scan_id: string
+  user_id: string
+  username: string
+  user_email: string
+  title: string
+  format: 'pdf' | 'html' | 'json'
+  file_path: string
+  generated: boolean
+  created_at: string
+}
+
+export interface AdminReportListOut {
+  total: number
+  items: AdminReport[]
+}
+
+export interface SystemHealth {
+  api_status: string
+  database_status: string
+  uptime_seconds: number
+  pipeline_status: 'active' | 'idle'
+  running_scans: number
+  pending_scans: number
+  failed_scans: number
+  last_successful_scan: string | null
+}
+
 export interface ScanDefaults {
   intensity: string
   thread_count: number
@@ -380,6 +409,15 @@ export const api = {
     },
     getScan: (scanId: string) =>
       request<AdminScan>(`/api/v1/admin/scans/${scanId}`),
+    getSystemHealth: () =>
+      request<SystemHealth>('/api/v1/admin/system/health'),
+    listReports: (params?: { user_id?: string; skip?: number; limit?: number }) => {
+      const qs = new URLSearchParams()
+      if (params?.user_id)      qs.set('user_id', params.user_id)
+      if (params?.skip != null) qs.set('skip',    String(params.skip))
+      if (params?.limit != null) qs.set('limit',  String(params.limit))
+      return request<AdminReportListOut>(`/api/v1/admin/reports?${qs.toString()}`)
+    },
   },
 
   settings: {

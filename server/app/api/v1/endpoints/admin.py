@@ -1,4 +1,5 @@
 import re
+import time
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +14,8 @@ from app.models.user import UserRole, UserStatus
 from app.utils.helpers import doc_to_out
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+_SERVER_START = time.time()
 
 
 class UserRoleUpdate(BaseModel):
@@ -213,3 +216,63 @@ async def admin_stats(
             "low":      vuln_low,
         },
     }
+
+
+@router.get("/system/health")
+async def system_health(
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: UserOut = Depends(require_admin),
+):
+    uptime_seconds = int(time.time() - _SERVER_START)
+
+    running_count = await db.scans.count_documents({"status": "running"})
+    pending_count = await db.scans.count_documents({"status": "pending"})
+    failed_count  = await db.scans.count_documents({"status": "failed"})
+
+    last_ok = await db.scans.find_one(
+        {"status": "completed", "completed_at": {"$exists": True}},
+        sort=[("completed_at", -1)],
+    )
+    last_ok_time = (
+        last_ok["completed_at"].isoformat() if last_ok and last_ok.get("completed_at") else None
+    )
+
+    pipeline_status = "active" if (running_count > 0 or pending_count > 0) else "idle"
+
+    return {
+        "api_status":          "online",
+        "database_status":     "connected",
+        "uptime_seconds":      uptime_seconds,
+        "pipeline_status":     pipeline_status,
+        "running_scans":       running_count,
+        "pending_scans":       pending_count,
+        "failed_scans":        failed_count,
+        "last_successful_scan": last_ok_time,
+    }
+
+
+@router.get("/reports")
+async def list_all_reports(
+    user_id: Optional[str] = Query(None),
+    skip:    int            = Query(0, ge=0),
+    limit:   int            = Query(50, ge=1, le=200),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    current_user: UserOut    = Depends(require_admin),
+):
+    filt: dict = {}
+    if user_id:
+        filt["user_id"] = user_id
+
+    total  = await db.reports.count_documents(filt)
+    cursor = db.reports.find(filt).sort("created_at", -1).skip(skip).limit(limit)
+
+    items = []
+    async for doc in cursor:
+        report = doc_to_out(doc)
+        uid      = report.get("user_id", "")
+        user_doc = await db.users.find_one({"_id": ObjectId(uid)}) if uid else None
+        report["username"]   = user_doc["username"] if user_doc else "unknown"
+        report["user_email"] = user_doc["email"]    if user_doc else ""
+        items.append(report)
+
+    return {"total": total, "items": items}
