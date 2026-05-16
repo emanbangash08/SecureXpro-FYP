@@ -77,13 +77,44 @@ export default function Sidebar({
   const isScanning = scanCtx?.isScanning ?? false;
   const isWebScanning = webCtx?.isScanning ?? false;
   const [scanTotal, setScanTotal] = useState<number | null>(null);
+  const [reportTotal, setReportTotal] = useState<number | null>(null);
+  const [vulnCounts, setVulnCounts] = useState<{
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  } | null>(null);
   const { theme, toggleTheme } = useTheme();
 
-  // Fetch real scan count; refresh whenever a scan completes (recentScans changes)
+  // Fetch real scan count; refresh whenever a scan completes
   useEffect(() => {
     api.scans
       .list({ limit: 1 })
       .then((r) => setScanTotal(r.total))
+      .catch(() => {});
+  }, [scanCtx?.recentScans]);
+
+  // Fetch report count once on mount
+  useEffect(() => {
+    api.reports
+      .list()
+      .then((r) => setReportTotal(r.length))
+      .catch(() => {});
+  }, []);
+
+  // Fetch live vuln counts for threat level indicator
+  useEffect(() => {
+    api.dashboard
+      .stats()
+      .then((s) => {
+        const v = s.vulnerabilities as Record<string, number>;
+        setVulnCounts({
+          critical: v.critical ?? 0,
+          high: v.high ?? 0,
+          medium: v.medium ?? 0,
+          low: v.low ?? 0,
+        });
+      })
       .catch(() => {});
   }, [scanCtx?.recentScans]);
 
@@ -226,9 +257,13 @@ export default function Sidebar({
           const scanning =
             (isScanning && href === "/scans/network") ||
             (isWebScanning && href === "/scans/web");
-          // Live badge: only "All Scans" gets a real count
+          // Live badges: scan count on "All Scans", report count on "Reports"
           const badge =
-            href === "/scans" && scanTotal != null ? String(scanTotal) : null;
+            href === "/scans" && scanTotal != null
+              ? String(scanTotal)
+              : href === "/reports" && reportTotal != null && reportTotal > 0
+                ? String(reportTotal)
+                : null;
           const isAlert = false;
           return (
             <Link key={href} href={href} style={{ textDecoration: "none" }}>
@@ -356,69 +391,105 @@ export default function Sidebar({
         <div style={{ height: 1, background: "var(--border-subtle)" }} />
       </div>
 
-      {/* Threat level indicator */}
-      <div style={{ padding: "0 10px", marginBottom: 10 }}>
-        <div
-          style={{
-            padding: "10px 12px",
-            borderRadius: 9,
-            background: "rgba(255,51,85,0.05)",
-            border: "1px solid rgba(255,51,85,0.12)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 6,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Zap size={12} color="#ff3355" />
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 9,
-                  color: "var(--text-faintest)",
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                }}
-              >
-                Threat Level
-              </span>
-            </div>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: "#ff3355",
-                fontWeight: 700,
-              }}
-            >
-              HIGH
-            </span>
-          </div>
-          <div
-            style={{
-              height: 3,
-              background: "var(--border-default)",
-              borderRadius: 3,
-              overflow: "hidden",
-            }}
-          >
+      {/* Threat level indicator — live from vuln data */}
+      {(() => {
+        const c = vulnCounts?.critical ?? 0;
+        const h = vulnCounts?.high ?? 0;
+        const m = vulnCounts?.medium ?? 0;
+        const l = vulnCounts?.low ?? 0;
+        const rawRisk = Math.min(
+          100,
+          Math.round((c * 14 + h * 7 + m * 2.5 + l * 0.8) / 1.4),
+        );
+        const level =
+          rawRisk === 0
+            ? { label: "NONE", color: "#94a3b8", barColor: "#94a3b8" }
+            : rawRisk <= 20
+              ? { label: "LOW", color: "#00cc88", barColor: "#00cc88" }
+              : rawRisk <= 50
+                ? {
+                    label: "MEDIUM",
+                    color: "#ffcc00",
+                    barColor: "linear-gradient(90deg,#ffcc00,#ff6b35)",
+                  }
+                : rawRisk <= 75
+                  ? {
+                      label: "HIGH",
+                      color: "#ff6b35",
+                      barColor: "linear-gradient(90deg,#ffcc00,#ff6b35)",
+                    }
+                  : {
+                      label: "CRITICAL",
+                      color: "#ff3355",
+                      barColor:
+                        "linear-gradient(90deg,#ffcc00,#ff6b35,#ff3355)",
+                    };
+        return (
+          <div style={{ padding: "0 10px", marginBottom: 10 }}>
             <div
               style={{
-                width: "78%",
-                height: "100%",
-                background: "linear-gradient(90deg, #ffcc00, #ff6b35, #ff3355)",
-                borderRadius: 3,
-                boxShadow: "0 0 8px rgba(255,51,85,0.4)",
+                padding: "10px 12px",
+                borderRadius: 9,
+                background: `${level.color}08`,
+                border: `1px solid ${level.color}20`,
               }}
-            />
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 6,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Zap size={12} color={level.color} />
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 9,
+                      color: "var(--text-faintest)",
+                      textTransform: "uppercase",
+                      letterSpacing: "1px",
+                    }}
+                  >
+                    Threat Level
+                  </span>
+                </div>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                    color: level.color,
+                    fontWeight: 700,
+                  }}
+                >
+                  {level.label}
+                </span>
+              </div>
+              <div
+                style={{
+                  height: 3,
+                  background: "var(--border-default)",
+                  borderRadius: 3,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${rawRisk || 4}%`,
+                    height: "100%",
+                    background: level.barColor,
+                    borderRadius: 3,
+                    boxShadow: `0 0 8px ${level.color}66`,
+                    transition: "width 1s cubic-bezier(0.16,1,0.3,1)",
+                  }}
+                />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Footer / User */}
       <div

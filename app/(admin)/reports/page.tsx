@@ -1,9 +1,10 @@
 ﻿'use client'
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, FileText, Globe, FileArchive, Search, ArrowUpRight, Clock, RefreshCw, X } from 'lucide-react'
+import { Plus, Trash2, FileText, Globe, FileArchive, Search, ArrowUpRight, Clock, RefreshCw, X, Download } from 'lucide-react'
 import Link from 'next/link'
 import { api, type ApiReport } from '@/lib/api'
 import type { ApiScan } from '@/lib/types'
+import { buildReportFromApiContent, downloadJSON, downloadHTML, openPrintPDF } from '@/lib/report-generator'
 
 const SEV_COLOR: Record<string, string> = {
   critical: '#ff3355', high: '#ff6b35', medium: '#ffcc00', low: '#00cc88', unknown: 'var(--text-faintest)',
@@ -100,6 +101,27 @@ export default function ReportsPage() {
   const [typeFilter, setTypeFilter] = useState<'all' | 'pdf' | 'html' | 'json'>('all')
   const [showModal, setShowModal] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState<string | null>(null)
+
+  const handleDownload = async (rep: ApiReport) => {
+    setDownloading(rep.id)
+    try {
+      const content = await api.reports.getContent(rep.id)
+      const data = buildReportFromApiContent(content, rep.title)
+      const prefix = rep.title.replace(/\s+/g, '-').slice(0, 40)
+      if (rep.format === 'json') {
+        downloadJSON(content, `${prefix}-report.json`)
+      } else if (rep.format === 'html') {
+        downloadHTML(data, `${prefix}-report.html`)
+      } else {
+        openPrintPDF(data)
+      }
+    } catch (e: any) {
+      alert(e.message ?? 'Failed to download report')
+    } finally {
+      setDownloading(null)
+    }
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -208,7 +230,7 @@ export default function ReportsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filtered.map((rep, i) => (
             <div key={rep.id}
-              style={{ background: 'var(--surface-1)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 13, padding: '18px 20px', display: 'grid', gridTemplateColumns: '36px 1fr 110px 90px 110px', alignItems: 'center', gap: 16, transition: 'all .2s', animation: `fade-in-up ${0.05 + i * 0.04}s ease forwards` }}
+              style={{ background: 'var(--surface-1)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 13, padding: '18px 20px', display: 'grid', gridTemplateColumns: '36px 1fr 110px 90px 170px', alignItems: 'center', gap: 16, transition: 'all .2s', animation: `fade-in-up ${0.05 + i * 0.04}s ease forwards` }}
               onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-1)'; e.currentTarget.style.borderColor = 'var(--border-default)' }}>
 
@@ -239,6 +261,12 @@ export default function ReportsPage() {
               </div>
 
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  disabled={downloading === rep.id}
+                  onClick={() => handleDownload(rep)}
+                  style={{ padding: '7px 12px', borderRadius: 7, background: `${FORMAT_COLORS[rep.format] ?? 'var(--text-dim)'}10`, border: `1px solid ${FORMAT_COLORS[rep.format] ?? 'var(--text-dim)'}25`, color: FORMAT_COLORS[rep.format] ?? 'var(--text-dim)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontFamily: 'var(--font-mono)', transition: 'all .2s', textTransform: 'uppercase' }}>
+                  <Download size={11} /> {downloading === rep.id ? '…' : rep.format}
+                </button>
                 <Link href={`/reports/${rep.id}`} style={{ textDecoration: 'none' }}>
                   <button style={{ padding: '7px 12px', borderRadius: 7, background: 'rgba(77,158,255,0.08)', border: '1px solid rgba(77,158,255,0.2)', color: '#4d9eff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontFamily: 'var(--font-mono)', transition: 'all .2s' }}>
                     <ArrowUpRight size={12} /> Open

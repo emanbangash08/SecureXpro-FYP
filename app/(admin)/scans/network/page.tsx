@@ -24,6 +24,8 @@ import {
   Gauge,
   Terminal as TerminalIcon,
   History,
+  Maximize2,
+  X,
 } from "lucide-react";
 import {
   useScanContext,
@@ -32,6 +34,12 @@ import {
   type PipelineStageId,
 } from "@/lib/scan-context";
 import type { ScanCreatePayload } from "@/lib/types";
+import {
+  buildReportFromScanReport,
+  downloadJSON,
+  downloadHTML,
+  openPrintPDF,
+} from "@/lib/report-generator";
 
 const SEV_COLOR: Record<string, string> = {
   critical: "#ff3355",
@@ -85,188 +93,1210 @@ function AnimatedNumber({
   return <>{n.toFixed(decimals)}</>;
 }
 
-// ── Network topology SVG ─────────────────────────────────────────────────────
+// ── Expanded network map modal ────────────────────────────────────────────────
 
-function NetworkTopology({ hosts }: { hosts: any[] }) {
-  const safe = hosts.length > 0 ? hosts : [];
-  const span = Math.max(safe.length, 1);
-  const positions = useMemo(
-    () => safe.map((_, i) => 40 + i * Math.floor(260 / span)),
-    [safe, span],
+function NetworkMapExpanded({
+  hosts,
+  vulns,
+  selectedHost,
+  onSelectHost,
+}: {
+  hosts: any[];
+  vulns: any[];
+  selectedHost: any | null;
+  onSelectHost: (h: any | null) => void;
+}) {
+  const count = hosts.length;
+  const W = 620,
+    H = 320;
+  const scanX = W / 2,
+    scanY = H - 30;
+  const hostY = 105;
+
+  const nodeR = count > 8 ? 22 : count > 5 ? 26 : 30;
+  const spread = count <= 1 ? 0 : Math.min(540, count * (nodeR * 3.3));
+  const positions = hosts.map((_, i) =>
+    count === 1 ? W / 2 : W / 2 - spread / 2 + (i * spread) / (count - 1),
   );
+
+  // Vuln stats for summary panel
+  const totalPorts = hosts.reduce((s, h) => s + (h.ports?.length ?? 0), 0);
+  const sev = { critical: 0, high: 0, medium: 0, low: 0 };
+  vulns.forEach((v: any) => {
+    if (v.severity in sev) (sev as any)[v.severity]++;
+  });
+  const maxCvss = vulns.reduce(
+    (m: number, v: any) => Math.max(m, v.cvss_score ?? 0),
+    0,
+  );
+
+  const hostVulns = selectedHost
+    ? vulns.filter(
+        (v: any) =>
+          v.affected_host === selectedHost.ip ||
+          v.affectedHost === selectedHost.ip,
+      )
+    : [];
+
   return (
-    <svg width="100%" viewBox="0 0 340 180" style={{ display: "block" }}>
-      <defs>
-        <radialGradient id="bgGlow" cx="50%" cy="0%" r="80%">
-          <stop offset="0%" stopColor="rgba(0,229,204,0.12)" />
-          <stop offset="100%" stopColor="rgba(0,229,204,0)" />
-        </radialGradient>
-        <filter id="nodeGlow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2.5" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-      <rect x="0" y="0" width="340" height="180" fill="url(#bgGlow)" />
-      <g style={{ animation: "topo-pulse 2.4s ease-in-out infinite" }}>
-        <circle
-          cx="170"
-          cy="26"
-          r="20"
-          fill="rgba(0,229,204,0.05)"
-          stroke="rgba(0,229,204,0.2)"
-          strokeWidth="1"
-        />
-        <circle
-          cx="170"
-          cy="26"
-          r="14"
-          fill="rgba(0,229,204,0.14)"
-          stroke="#00e5cc"
-          strokeWidth="1.5"
-          filter="url(#nodeGlow)"
-        />
-        <text
-          x="170"
-          y="30"
-          textAnchor="middle"
-          fill="#00e5cc"
-          fontSize="9"
-          fontFamily="monospace"
-          fontWeight="700"
+    <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
+      {/* ── Large SVG map ── */}
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          padding: "16px 20px 8px",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <svg
+          width="100%"
+          viewBox={`0 0 ${W} ${H}`}
+          style={{ display: "block", flex: 1 }}
         >
-          RTR
-        </text>
-      </g>
-      {safe.map((h, i) => {
-        const x = positions[i];
-        const col = SEV_COLOR[h.severity ?? "info"];
-        return (
-          <g key={`l-${h.ip}`}>
-            <line
-              x1="170"
-              y1="42"
-              x2={x}
-              y2="108"
-              stroke={col}
-              strokeWidth="1"
-              strokeDasharray="3 3"
-              opacity="0.3"
-            />
-            <line
-              x1="170"
-              y1="42"
-              x2={x}
-              y2="108"
-              stroke={col}
-              strokeWidth="1.4"
-              strokeDasharray="5 12"
-              style={{
-                animation: "dash-flow 1.8s linear infinite",
-                opacity: 0.9,
-              }}
-            />
-            <circle r="2" fill={col} filter="url(#nodeGlow)">
-              <animateMotion
-                dur={`${2 + (i % 3) * 0.4}s`}
-                repeatCount="indefinite"
-                path={`M170,42 L${x},108`}
-              />
-            </circle>
-          </g>
-        );
-      })}
-      {safe.map((h, i) => {
-        const x = positions[i];
-        const col = SEV_COLOR[h.severity ?? "info"];
-        const isCrit = h.severity === "critical" || h.severity === "high";
-        return (
-          <g key={h.ip}>
-            {isCrit && (
+          <defs>
+            <radialGradient id="expMapBg" cx="50%" cy="20%" r="75%">
+              <stop offset="0%" stopColor="rgba(0,229,204,0.10)" />
+              <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+            </radialGradient>
+            <filter id="expGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.5" result="b" />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <filter
+              id="expGlowStrong"
+              x="-60%"
+              y="-60%"
+              width="220%"
+              height="220%"
+            >
+              <feGaussianBlur stdDeviation="5" result="b" />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          <rect x="0" y="0" width={W} height={H} fill="url(#expMapBg)" />
+          {/* Grid dots */}
+          {Array.from({ length: 6 }, (_, row) =>
+            Array.from({ length: 10 }, (_, col) => (
               <circle
-                cx={x}
-                cy="120"
-                r="22"
-                fill="none"
-                stroke={col}
-                strokeWidth="1.5"
-                opacity="0.5"
+                key={`gd-${row}-${col}`}
+                cx={col * 66 + 16}
+                cy={row * 54 + 18}
+                r="1"
+                fill="rgba(0,229,204,0.06)"
+              />
+            )),
+          )}
+
+          {/* Empty state */}
+          {count === 0 && (
+            <text
+              x={W / 2}
+              y={H / 2}
+              textAnchor="middle"
+              fill="rgba(100,116,130,0.5)"
+              fontSize="12"
+              fontFamily="monospace"
+            >
+              No hosts discovered yet
+            </text>
+          )}
+
+          {/* Connection lines */}
+          {hosts.map((h, i) => {
+            const x = positions[i];
+            const col = SEV_COLOR[h.severity ?? "info"];
+            const isSel = selectedHost?.ip === h.ip;
+            return (
+              <g key={`el-${h.ip}`}>
+                <line
+                  x1={scanX}
+                  y1={scanY - 22}
+                  x2={x}
+                  y2={hostY + nodeR + 2}
+                  stroke={col}
+                  strokeWidth={isSel ? "1.4" : "0.8"}
+                  opacity={isSel ? 0.35 : 0.15}
+                />
+                <line
+                  x1={scanX}
+                  y1={scanY - 22}
+                  x2={x}
+                  y2={hostY + nodeR + 2}
+                  stroke={col}
+                  strokeWidth={isSel ? "1.8" : "1.2"}
+                  strokeDasharray="5 10"
+                  opacity={isSel ? 0.9 : 0.55}
+                  style={{
+                    animation: `dash-flow ${1.7 + i * 0.3}s linear infinite`,
+                  }}
+                />
+                <circle r="2.8" fill={col} filter="url(#expGlow)">
+                  <animateMotion
+                    dur={`${2.2 + i * 0.35}s`}
+                    repeatCount="indefinite"
+                    path={`M${scanX},${scanY - 22} L${x},${hostY + nodeR + 2}`}
+                  />
+                </circle>
+              </g>
+            );
+          })}
+
+          {/* Host nodes */}
+          {hosts.map((h, i) => {
+            const x = positions[i];
+            const col = SEV_COLOR[h.severity ?? "info"];
+            const isAlert = h.severity === "critical" || h.severity === "high";
+            const isSel = selectedHost?.ip === h.ip;
+            const abbr = osAbbr(h.os);
+            const portCnt = (h.ports as any[] | undefined)?.length ?? 0;
+            const vulnCnt = h.vulnCount ?? 0;
+            const ip = (h.ip as string) ?? "";
+            const rawHost = (h.hostname as string) ?? "";
+            const shortHost =
+              rawHost.length > 14 ? rawHost.slice(0, 13) + "…" : rawHost;
+
+            return (
+              <g
+                key={`eh-${h.ip}`}
+                onClick={() => onSelectHost(isSel ? null : h)}
+                style={{ cursor: "pointer" }}
+              >
+                {/* Selected highlight glow */}
+                {isSel && (
+                  <circle
+                    cx={x}
+                    cy={hostY}
+                    r={nodeR + 12}
+                    fill="none"
+                    stroke={col}
+                    strokeWidth="2"
+                    opacity="0.5"
+                    style={{
+                      animation: "topo-ring 1.8s ease-out infinite",
+                      transformOrigin: `${x}px ${hostY}px`,
+                    }}
+                  />
+                )}
+                {/* Alert ring */}
+                {isAlert && !isSel && (
+                  <circle
+                    cx={x}
+                    cy={hostY}
+                    r={nodeR + 9}
+                    fill="none"
+                    stroke={col}
+                    strokeWidth="1.2"
+                    opacity="0.3"
+                    style={{
+                      animation: "topo-ring 2.2s ease-out infinite",
+                      transformOrigin: `${x}px ${hostY}px`,
+                    }}
+                  />
+                )}
+                {/* Main circle */}
+                <circle
+                  cx={x}
+                  cy={hostY}
+                  r={nodeR}
+                  fill={isSel ? `${col}30` : `${col}18`}
+                  stroke={col}
+                  strokeWidth={isSel ? 2.2 : 1.6}
+                  filter={
+                    isAlert || isSel ? "url(#expGlowStrong)" : "url(#expGlow)"
+                  }
+                />
+                {/* OS abbreviation */}
+                <text
+                  x={x}
+                  y={hostY - (nodeR > 25 ? 5 : 3)}
+                  textAnchor="middle"
+                  fill={col}
+                  fontSize={nodeR > 25 ? 10 : 8}
+                  fontFamily="monospace"
+                  fontWeight="800"
+                >
+                  {abbr}
+                </text>
+                {/* Stats: vulns · ports */}
+                <text
+                  x={x}
+                  y={hostY + (nodeR > 25 ? 8 : 6)}
+                  textAnchor="middle"
+                  fill={col}
+                  fontSize={nodeR > 25 ? 8 : 6.5}
+                  fontFamily="monospace"
+                  opacity="0.82"
+                >
+                  {vulnCnt}v · {portCnt}p
+                </text>
+                {/* IP */}
+                <text
+                  x={x}
+                  y={hostY + nodeR + 15}
+                  textAnchor="middle"
+                  fill={
+                    isSel ? "rgba(220,230,240,0.95)" : "rgba(148,163,184,0.85)"
+                  }
+                  fontSize="8.5"
+                  fontFamily="monospace"
+                  fontWeight={isSel ? "700" : "400"}
+                >
+                  {ip}
+                </text>
+                {/* Hostname */}
+                {shortHost && (
+                  <text
+                    x={x}
+                    y={hostY + nodeR + 27}
+                    textAnchor="middle"
+                    fill={
+                      isSel ? "rgba(180,195,210,0.8)" : "rgba(100,116,130,0.65)"
+                    }
+                    fontSize="7.5"
+                    fontFamily="monospace"
+                  >
+                    {shortHost}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Scanner node */}
+          <g>
+            <circle
+              cx={scanX}
+              cy={scanY}
+              r="26"
+              fill="none"
+              stroke="rgba(0,229,204,0.18)"
+              strokeWidth="1.8"
+              style={{ animation: "topo-pulse 2.6s ease-in-out infinite" }}
+            />
+            <circle
+              cx={scanX}
+              cy={scanY}
+              r="19"
+              fill="rgba(0,229,204,0.12)"
+              stroke="#00e5cc"
+              strokeWidth="1.8"
+              filter="url(#expGlow)"
+            />
+            <text
+              x={scanX}
+              y={scanY - 2}
+              textAnchor="middle"
+              fill="#00e5cc"
+              fontSize="10"
+              fontFamily="monospace"
+              fontWeight="800"
+            >
+              SXP
+            </text>
+            <text
+              x={scanX}
+              y={scanY + 11}
+              textAnchor="middle"
+              fill="#00e5cc"
+              fontSize="7"
+              fontFamily="monospace"
+              opacity="0.7"
+            >
+              SCANNER
+            </text>
+          </g>
+        </svg>
+
+        {/* Legend row */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            gap: 14,
+            flexWrap: "wrap",
+            padding: "6px 0 4px",
+          }}
+        >
+          {[
+            { label: "Critical", col: "#ff3355" },
+            { label: "High", col: "#ff6b35" },
+            { label: "Medium", col: "#ffcc00" },
+            { label: "Low", col: "#00cc88" },
+            { label: "Scanner", col: "#00e5cc" },
+          ].map(({ label, col }) => (
+            <div
+              key={label}
+              style={{ display: "flex", alignItems: "center", gap: 5 }}
+            >
+              <span
                 style={{
-                  animation: "topo-ring 2s ease-out infinite",
-                  transformOrigin: `${x}px 120px`,
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: col,
+                  boxShadow: `0 0 5px ${col}88`,
+                  flexShrink: 0,
+                  display: "inline-block",
                 }}
               />
+              <span
+                style={{
+                  fontSize: 9,
+                  fontFamily: "var(--font-mono)",
+                  color: "var(--text-quietest)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.6px",
+                }}
+              >
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Details sidebar ── */}
+      <div
+        style={{
+          width: 290,
+          borderLeft: "1px solid rgba(255,255,255,0.06)",
+          background: "rgba(0,0,0,0.18)",
+          overflowY: "auto",
+          padding: 20,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+        }}
+      >
+        {!selectedHost ? (
+          /* Network overview */
+          <>
+            <div
+              style={{
+                fontSize: 11,
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                color: "var(--text-body)",
+                marginBottom: 2,
+              }}
+            >
+              Network Overview
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+              }}
+            >
+              {[
+                { label: "Hosts", val: hosts.length, col: "#00e5cc" },
+                { label: "Open Ports", val: totalPorts, col: "#4d9eff" },
+                { label: "Vulns", val: vulns.length, col: "#ffcc00" },
+                {
+                  label: "Max CVSS",
+                  val: maxCvss > 0 ? maxCvss.toFixed(1) : "—",
+                  col: "#ff6b35",
+                },
+              ].map(({ label, val, col }) => (
+                <div
+                  key={label}
+                  style={{
+                    background: "var(--surface-2)",
+                    borderRadius: 10,
+                    padding: "12px 14px",
+                    border: `1px solid ${col}18`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 18,
+                      fontFamily: "var(--font-display)",
+                      fontWeight: 800,
+                      color: col,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {val}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 9,
+                      fontFamily: "var(--font-mono)",
+                      color: "var(--text-quietest)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.6px",
+                      marginTop: 4,
+                    }}
+                  >
+                    {label}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+                color: "var(--text-quietest)",
+                marginTop: 2,
+              }}
+            >
+              Severity breakdown
+            </div>
+            {[
+              { label: "Critical", count: sev.critical, col: "#ff3355" },
+              { label: "High", count: sev.high, col: "#ff6b35" },
+              { label: "Medium", count: sev.medium, col: "#ffcc00" },
+              { label: "Low", count: sev.low, col: "#00cc88" },
+            ].map(({ label, count: sc, col }) => (
+              <div
+                key={label}
+                style={{ display: "flex", alignItems: "center", gap: 8 }}
+              >
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono)",
+                    color: col,
+                    width: 50,
+                  }}
+                >
+                  {label}
+                </span>
+                <div
+                  style={{
+                    flex: 1,
+                    height: 5,
+                    borderRadius: 3,
+                    background: "var(--surface-3)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${vulns.length > 0 ? Math.max(3, (sc / vulns.length) * 100) : 0}%`,
+                      background: col,
+                      borderRadius: 3,
+                    }}
+                  />
+                </div>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono)",
+                    color: col,
+                    width: 20,
+                    textAlign: "right",
+                  }}
+                >
+                  {sc}
+                </span>
+              </div>
+            ))}
+            <div
+              style={{
+                marginTop: 8,
+                padding: "10px 12px",
+                borderRadius: 10,
+                background: "rgba(0,229,204,0.05)",
+                border: "1px solid rgba(0,229,204,0.12)",
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+                color: "var(--text-quietest)",
+                lineHeight: 1.6,
+              }}
+            >
+              Click any host node on the map to view detailed host information,
+              open ports, and associated vulnerabilities.
+            </div>
+          </>
+        ) : (
+          /* Host detail view */
+          <>
+            {/* Header */}
+            <div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 6,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 15,
+                    fontFamily: "var(--font-mono)",
+                    fontWeight: 800,
+                    color: SEV_COLOR[selectedHost.severity ?? "info"],
+                  }}
+                >
+                  {selectedHost.ip}
+                </span>
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontFamily: "var(--font-mono)",
+                    fontWeight: 700,
+                    color: SEV_COLOR[selectedHost.severity ?? "info"],
+                    background: `${SEV_COLOR[selectedHost.severity ?? "info"]}18`,
+                    border: `1px solid ${SEV_COLOR[selectedHost.severity ?? "info"]}35`,
+                    padding: "2px 7px",
+                    borderRadius: 5,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {selectedHost.severity ?? "info"}
+                </span>
+              </div>
+              {selectedHost.hostname && (
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--text-dim)",
+                    marginBottom: 4,
+                  }}
+                >
+                  {selectedHost.hostname}
+                </div>
+              )}
+              {selectedHost.os && (
+                <div
+                  style={{
+                    fontSize: 9,
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--text-quietest)",
+                  }}
+                >
+                  {selectedHost.os}
+                </div>
+              )}
+            </div>
+
+            {/* Stats */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 6,
+              }}
+            >
+              {[
+                {
+                  label: "Ports",
+                  val: selectedHost.ports?.length ?? 0,
+                  col: "#4d9eff",
+                },
+                {
+                  label: "Vulns",
+                  val: selectedHost.vulnCount ?? 0,
+                  col: SEV_COLOR[selectedHost.severity ?? "info"],
+                },
+                {
+                  label: "CVSS",
+                  val:
+                    hostVulns.length > 0
+                      ? Math.max(
+                          ...hostVulns.map((v: any) => v.cvss_score ?? 0),
+                        ).toFixed(1)
+                      : "—",
+                  col: "#ffcc00",
+                },
+              ].map(({ label, val, col }) => (
+                <div
+                  key={label}
+                  style={{
+                    background: "var(--surface-2)",
+                    borderRadius: 9,
+                    padding: "10px 10px 8px",
+                    textAlign: "center",
+                    border: `1px solid ${col}18`,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontFamily: "var(--font-display)",
+                      fontWeight: 800,
+                      color: col,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {val}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 8,
+                      fontFamily: "var(--font-mono)",
+                      color: "var(--text-quietest)",
+                      textTransform: "uppercase",
+                      marginTop: 3,
+                    }}
+                  >
+                    {label}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Open Ports */}
+            {(selectedHost.ports?.length ?? 0) > 0 && (
+              <div>
+                <div
+                  style={{
+                    fontSize: 9,
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--text-quietest)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.9px",
+                    marginBottom: 7,
+                  }}
+                >
+                  Open Ports
+                </div>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 4 }}
+                >
+                  {(selectedHost.ports as any[]).slice(0, 10).map((p: any) => (
+                    <div
+                      key={`${p.port}-${p.protocol}`}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 10px",
+                        borderRadius: 7,
+                        background: "var(--surface-2)",
+                        border: "1px solid rgba(255,255,255,0.04)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontFamily: "var(--font-mono)",
+                          fontWeight: 700,
+                          color: "#4d9eff",
+                          minWidth: 36,
+                        }}
+                      >
+                        {p.port}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontFamily: "var(--font-mono)",
+                          color: "var(--text-quietest)",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {p.protocol}
+                      </span>
+                      <span
+                        style={{
+                          flex: 1,
+                          fontSize: 9,
+                          fontFamily: "var(--font-mono)",
+                          color: "var(--text-dim)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {p.service}
+                        {p.version ? ` — ${p.version}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                  {(selectedHost.ports?.length ?? 0) > 10 && (
+                    <div
+                      style={{
+                        fontSize: 9,
+                        fontFamily: "var(--font-mono)",
+                        color: "var(--text-quietest)",
+                        textAlign: "center",
+                      }}
+                    >
+                      +{selectedHost.ports.length - 10} more — see Open Ports
+                      tab
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
+
+            {/* Vulnerabilities */}
+            {hostVulns.length > 0 && (
+              <div>
+                <div
+                  style={{
+                    fontSize: 9,
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--text-quietest)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.9px",
+                    marginBottom: 7,
+                  }}
+                >
+                  Vulnerabilities ({hostVulns.length})
+                </div>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 4 }}
+                >
+                  {[...hostVulns]
+                    .sort(
+                      (a: any, b: any) =>
+                        (b.cvss_score ?? 0) - (a.cvss_score ?? 0),
+                    )
+                    .slice(0, 8)
+                    .map((v: any, vi: number) => {
+                      const col = SEV_COLOR[v.severity ?? "info"];
+                      return (
+                        <div
+                          key={vi}
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: 7,
+                            padding: "6px 10px",
+                            borderRadius: 7,
+                            background: "var(--surface-2)",
+                            border: `1px solid ${col}18`,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 8,
+                              fontFamily: "var(--font-mono)",
+                              fontWeight: 800,
+                              color: col,
+                              background: `${col}18`,
+                              border: `1px solid ${col}30`,
+                              padding: "1px 5px",
+                              borderRadius: 3,
+                              flexShrink: 0,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {v.severity}
+                          </span>
+                          <span
+                            style={{
+                              flex: 1,
+                              fontSize: 9,
+                              fontFamily: "var(--font-mono)",
+                              color: "var(--text-dim)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {v.title}
+                          </span>
+                          {v.cvss_score > 0 && (
+                            <span
+                              style={{
+                                fontSize: 9,
+                                fontFamily: "var(--font-mono)",
+                                fontWeight: 700,
+                                color: col,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {(v.cvss_score as number).toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  {hostVulns.length > 8 && (
+                    <div
+                      style={{
+                        fontSize: 9,
+                        fontFamily: "var(--font-mono)",
+                        color: "var(--text-quietest)",
+                        textAlign: "center",
+                      }}
+                    >
+                      +{hostVulns.length - 8} more — see Vulnerabilities tab
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {hostVulns.length === 0 && (
+              <div
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 10,
+                  background: "rgba(0,204,136,0.05)",
+                  border: "1px solid rgba(0,204,136,0.15)",
+                  fontSize: 10,
+                  fontFamily: "var(--font-mono)",
+                  color: "#00cc88",
+                }}
+              >
+                No vulnerabilities detected on this host.
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Network topology SVG ─────────────────────────────────────────────────────
+
+function osAbbr(os?: string): string {
+  if (!os) return "???";
+  const lc = os.toLowerCase();
+  if (lc.includes("windows")) return "WIN";
+  if (lc.includes("linux")) return "LNX";
+  if (lc.includes("macos") || lc.includes("darwin") || lc.includes("mac os"))
+    return "MAC";
+  if (lc.includes("freebsd") || lc.includes("openbsd") || lc.includes("netbsd"))
+    return "BSD";
+  if (lc.includes("cisco") || lc.includes("router") || lc.includes("juniper"))
+    return "NET";
+  if (lc.includes("android")) return "AND";
+  if (lc.includes("vmware") || lc.includes("esxi")) return "VMW";
+  return os.slice(0, 3).toUpperCase();
+}
+
+function NetworkTopology({ hosts }: { hosts: any[] }) {
+  const safeHosts = hosts.length > 0 ? hosts : [];
+  const count = safeHosts.length;
+
+  const W = 340,
+    H = 210;
+  const scanX = W / 2,
+    scanY = H - 24;
+  const hostY = 68;
+
+  // Positions: single host centered, multiple spread evenly
+  const spread = count <= 1 ? 0 : Math.min(278, count * 78);
+  const positions = useMemo(
+    () =>
+      safeHosts.map((_, i) =>
+        count === 1 ? W / 2 : W / 2 - spread / 2 + (i * spread) / (count - 1),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [count, spread],
+  );
+
+  const LEGEND = [
+    { label: "Critical", col: "#ff3355" },
+    { label: "High", col: "#ff6b35" },
+    { label: "Medium", col: "#ffcc00" },
+    { label: "Low", col: "#00cc88" },
+    { label: "Scanner", col: "#00e5cc" },
+  ];
+
+  return (
+    <>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
+        <defs>
+          <radialGradient id="topoMapBg" cx="50%" cy="20%" r="75%">
+            <stop offset="0%" stopColor="rgba(0,229,204,0.09)" />
+            <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+          </radialGradient>
+          <filter id="topoGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.2" result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter
+            id="topoGlowStrong"
+            x="-60%"
+            y="-60%"
+            width="220%"
+            height="220%"
+          >
+            <feGaussianBlur stdDeviation="4" result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        {/* Background */}
+        <rect x="0" y="0" width={W} height={H} fill="url(#topoMapBg)" />
+
+        {/* Subtle grid dots */}
+        {Array.from({ length: 5 }, (_, row) =>
+          Array.from({ length: 9 }, (_, col) => (
             <circle
-              cx={x}
-              cy="120"
+              key={`dot-${row}-${col}`}
+              cx={col * 40 + 10}
+              cy={row * 46 + 14}
+              r="0.9"
+              fill="rgba(0,229,204,0.07)"
+            />
+          )),
+        )}
+
+        {/* Empty state */}
+        {count === 0 && (
+          <>
+            <circle
+              cx={scanX}
+              cy={H / 2 - 16}
               r="18"
-              fill={`${col}22`}
-              stroke={col}
-              strokeWidth="1.5"
-              filter={isCrit ? "url(#nodeGlow)" : undefined}
+              fill="rgba(0,229,204,0.05)"
+              stroke="rgba(0,229,204,0.18)"
+              strokeWidth="1"
+              strokeDasharray="3 5"
             />
             <text
-              x={x}
-              y="118"
+              x={scanX}
+              y={H / 2 + 10}
               textAnchor="middle"
-              fill={col}
-              fontSize="8"
-              fontFamily="monospace"
-              fontWeight="700"
-            >
-              SRV
-            </text>
-            <text
-              x={x}
-              y="129"
-              textAnchor="middle"
-              fill={col}
-              fontSize="7"
+              fill="rgba(100,116,130,0.55)"
+              fontSize="10"
               fontFamily="monospace"
             >
-              {h.vulnCount ?? 0}V
+              No hosts discovered
             </text>
-            <text
-              x={x}
-              y="148"
-              textAnchor="middle"
-              fill="#6a7b8a"
-              fontSize="7"
-              fontFamily="monospace"
+          </>
+        )}
+
+        {/* Animated connection lines: scanner → each host */}
+        {safeHosts.map((h, i) => {
+          const x = positions[i];
+          const col = SEV_COLOR[h.severity ?? "info"];
+          return (
+            <g key={`line-${h.ip}`}>
+              {/* Base trace */}
+              <line
+                x1={scanX}
+                y1={scanY - 20}
+                x2={x}
+                y2={hostY + 22}
+                stroke={col}
+                strokeWidth="0.7"
+                opacity="0.18"
+              />
+              {/* Animated dashes */}
+              <line
+                x1={scanX}
+                y1={scanY - 20}
+                x2={x}
+                y2={hostY + 22}
+                stroke={col}
+                strokeWidth="1.1"
+                strokeDasharray="5 10"
+                opacity="0.65"
+                style={{
+                  animation: `dash-flow ${1.7 + i * 0.35}s linear infinite`,
+                }}
+              />
+              {/* Traveling packet */}
+              <circle r="2.5" fill={col} filter="url(#topoGlow)">
+                <animateMotion
+                  dur={`${2.1 + i * 0.4}s`}
+                  repeatCount="indefinite"
+                  path={`M${scanX},${scanY - 20} L${x},${hostY + 22}`}
+                />
+              </circle>
+            </g>
+          );
+        })}
+
+        {/* Host nodes */}
+        {safeHosts.map((h, i) => {
+          const x = positions[i];
+          const col = SEV_COLOR[h.severity ?? "info"];
+          const isAlert = h.severity === "critical" || h.severity === "high";
+          const abbr = osAbbr(h.os);
+          const portCnt = (h.ports as any[] | undefined)?.length ?? 0;
+          const vulnCnt = h.vulnCount ?? 0;
+          const ip = (h.ip as string) ?? "";
+          const rawHost = (h.hostname as string) ?? "";
+          const shortHost =
+            rawHost.length > 12 ? rawHost.slice(0, 11) + "…" : rawHost;
+
+          return (
+            <g key={`host-${h.ip}`}>
+              {/* Pulsing alert ring for critical/high */}
+              {isAlert && (
+                <circle
+                  cx={x}
+                  cy={hostY}
+                  r="27"
+                  fill="none"
+                  stroke={col}
+                  strokeWidth="1.2"
+                  opacity="0.35"
+                  style={{
+                    animation: "topo-ring 2.2s ease-out infinite",
+                    transformOrigin: `${x}px ${hostY}px`,
+                  }}
+                />
+              )}
+              {/* Main host circle */}
+              <circle
+                cx={x}
+                cy={hostY}
+                r="20"
+                fill={`${col}18`}
+                stroke={col}
+                strokeWidth="1.6"
+                filter={isAlert ? "url(#topoGlowStrong)" : "url(#topoGlow)"}
+              />
+              {/* OS abbreviation — top line */}
+              <text
+                x={x}
+                y={hostY - 4}
+                textAnchor="middle"
+                fill={col}
+                fontSize="8"
+                fontFamily="monospace"
+                fontWeight="800"
+              >
+                {abbr}
+              </text>
+              {/* Stats line: vulns · ports */}
+              <text
+                x={x}
+                y={hostY + 8}
+                textAnchor="middle"
+                fill={col}
+                fontSize="6.5"
+                fontFamily="monospace"
+                opacity="0.8"
+              >
+                {vulnCnt}v · {portCnt}p
+              </text>
+              {/* IP address */}
+              <text
+                x={x}
+                y={hostY + 36}
+                textAnchor="middle"
+                fill="rgba(148,163,184,0.85)"
+                fontSize="7"
+                fontFamily="monospace"
+              >
+                {ip}
+              </text>
+              {/* Hostname (if available) */}
+              {shortHost && (
+                <text
+                  x={x}
+                  y={hostY + 49}
+                  textAnchor="middle"
+                  fill="rgba(100,116,130,0.65)"
+                  fontSize="6.5"
+                  fontFamily="monospace"
+                >
+                  {shortHost}
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* Scanner node — bottom center */}
+        <g>
+          <circle
+            cx={scanX}
+            cy={scanY}
+            r="24"
+            fill="none"
+            stroke="rgba(0,229,204,0.15)"
+            strokeWidth="1.5"
+            style={{ animation: "topo-pulse 2.6s ease-in-out infinite" }}
+          />
+          <circle
+            cx={scanX}
+            cy={scanY}
+            r="17"
+            fill="rgba(0,229,204,0.11)"
+            stroke="#00e5cc"
+            strokeWidth="1.6"
+            filter="url(#topoGlow)"
+          />
+          <text
+            x={scanX}
+            y={scanY - 2}
+            textAnchor="middle"
+            fill="#00e5cc"
+            fontSize="8"
+            fontFamily="monospace"
+            fontWeight="800"
+          >
+            SXP
+          </text>
+          <text
+            x={scanX}
+            y={scanY + 9}
+            textAnchor="middle"
+            fill="#00e5cc"
+            fontSize="6"
+            fontFamily="monospace"
+            opacity="0.75"
+          >
+            SCANNER
+          </text>
+        </g>
+      </svg>
+
+      {/* Legend */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          marginTop: 6,
+        }}
+      >
+        {LEGEND.map(({ label, col }) => (
+          <div
+            key={label}
+            style={{ display: "flex", alignItems: "center", gap: 4 }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: col,
+                boxShadow: `0 0 4px ${col}88`,
+                display: "inline-block",
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontSize: 8,
+                fontFamily: "var(--font-mono)",
+                color: "var(--text-quietest)",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+              }}
             >
-              {h.ip}
-            </text>
-          </g>
-        );
-      })}
-      <g style={{ animation: "topo-pulse 1.6s ease-in-out infinite" }}>
-        <rect
-          x="146"
-          y="158"
-          width="48"
-          height="16"
-          rx="4"
-          fill="rgba(255,51,85,0.14)"
-          stroke="rgba(255,51,85,0.5)"
-          strokeWidth="1"
-          filter="url(#nodeGlow)"
-        />
-        <text
-          x="170"
-          y="170"
-          textAnchor="middle"
-          fill="#ff3355"
-          fontSize="8"
-          fontFamily="monospace"
-          fontWeight="700"
-        >
-          ATTACKER
-        </text>
-      </g>
-    </svg>
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -286,6 +1316,20 @@ export default function NetworkScanPage() {
   >("hosts");
   const [expandedVuln, setExpandedVuln] = useState<string | null>(null);
   const [expandedExploit, setExpandedExploit] = useState<string | null>(null);
+  const [networkMapOpen, setNetworkMapOpen] = useState(false);
+  const [selectedMapHost, setSelectedMapHost] = useState<any>(null);
+
+  useEffect(() => {
+    if (!networkMapOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setNetworkMapOpen(false);
+        setSelectedMapHost(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [networkMapOpen]);
 
   // Global scan context
   const ctx = useScanContext()!;
@@ -2136,85 +3180,123 @@ export default function NetworkScanPage() {
             }}
           >
             {[
-              [
-                report.summary.hosts_discovered,
-                "Hosts Found",
-                "#4d9eff",
-                Globe,
-              ],
-              [
-                report.summary.open_ports,
-                "Open Ports",
-                "var(--accent-text)",
-                Layers,
-              ],
-              [
-                report.summary.total_vulns,
-                "Vulnerabilities",
-                "#ffcc00",
-                AlertTriangle,
-              ],
-              [
-                report.summary.exploit_count,
-                "Exploits Found",
-                "#ff3355",
-                Crosshair,
-              ],
-            ].map(([val, label, col, Ic], i) => {
-              const IcComp = Ic as React.ElementType;
-              return (
+              {
+                val: report.summary.hosts_discovered,
+                label: "Hosts Found",
+                col: "#4d9eff",
+                Ic: Globe,
+              },
+              {
+                val: report.summary.open_ports,
+                label: "Open Ports",
+                col: "#00e5cc",
+                Ic: Layers,
+              },
+              {
+                val: report.summary.total_vulns,
+                label: "Vulnerabilities",
+                col: "#ffcc00",
+                Ic: AlertTriangle,
+              },
+              {
+                val: report.summary.exploit_count,
+                label: "Exploits Found",
+                col: "#ff3355",
+                Ic: Crosshair,
+              },
+            ].map(({ val, label, col, Ic }, i) => (
+              <div
+                key={label}
+                style={{
+                  padding: "20px 24px",
+                  borderRight:
+                    i < 3 ? "1px solid var(--border-subtle)" : "none",
+                  position: "relative",
+                  overflow: "hidden",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  animation: "fade-in-up .4s ease both",
+                  animationDelay: `${i * 70}ms`,
+                  background: `linear-gradient(135deg, ${col}06 0%, transparent 60%)`,
+                  transition: "background .25s ease",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.background =
+                    `linear-gradient(135deg, ${col}12 0%, transparent 60%)`;
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.background =
+                    `linear-gradient(135deg, ${col}06 0%, transparent 60%)`;
+                }}
+              >
+                {/* Icon badge */}
                 <div
-                  key={label as string}
                   style={{
-                    padding: "22px 26px",
-                    borderRight: "1px solid var(--surface-3)",
-                    position: "relative",
-                    overflow: "hidden",
-                    animation: "fade-in-up .4s ease both",
-                    animationDelay: `${i * 70}ms`,
+                    width: 48,
+                    height: 48,
+                    borderRadius: 13,
+                    background: `${col}14`,
+                    border: `1px solid ${col}35`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    boxShadow: `0 0 18px ${col}30, inset 0 1px 0 ${col}20`,
                   }}
                 >
+                  <Ic
+                    size={22}
+                    color={col}
+                    strokeWidth={1.6}
+                    style={{ filter: `drop-shadow(0 0 6px ${col}cc)` }}
+                  />
+                </div>
+
+                {/* Text */}
+                <div>
                   <div
                     style={{
-                      position: "absolute",
-                      top: 10,
-                      right: 12,
-                      opacity: 0.07,
-                    }}
-                  >
-                    <IcComp size={62} color={col as string} />
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 30,
+                      fontSize: 28,
                       fontWeight: 800,
-                      color: col as string,
+                      color: col,
                       fontFamily: "var(--font-display)",
                       lineHeight: 1,
-                      textShadow: `0 0 22px ${col as string}55`,
-                      position: "relative",
                       letterSpacing: "-1.2px",
+                      textShadow: `0 0 20px ${col}55`,
                     }}
                   >
-                    {val as number}
+                    {val}
                   </div>
                   <div
                     style={{
                       fontSize: 10,
                       fontFamily: "var(--font-mono)",
-                      color: "var(--text-fainter)",
-                      marginTop: 8,
+                      color: "var(--text-dim)",
+                      marginTop: 6,
                       textTransform: "uppercase",
                       letterSpacing: "1.1px",
-                      position: "relative",
                       fontWeight: 600,
                     }}
                   >
-                    {label as string}
+                    {label}
                   </div>
                 </div>
-              );
-            })}
+
+                {/* Subtle corner accent */}
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: 0,
+                    right: 0,
+                    width: 60,
+                    height: 60,
+                    background: `radial-gradient(circle at bottom right, ${col}12, transparent 70%)`,
+                    pointerEvents: "none",
+                  }}
+                />
+              </div>
+            ))}
           </div>
 
           {/* Tabs */}
@@ -2444,6 +3526,7 @@ export default function NetworkScanPage() {
                     ))}
                   </div>
                   <div
+                    onClick={() => setNetworkMapOpen(true)}
                     style={{
                       background:
                         "linear-gradient(180deg, rgba(0,229,204,.05), rgba(0,229,204,.01))",
@@ -2452,6 +3535,20 @@ export default function NetworkScanPage() {
                       padding: 14,
                       position: "sticky",
                       top: 12,
+                      cursor: "pointer",
+                      transition: "border-color .2s ease, box-shadow .2s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.borderColor =
+                        "rgba(0,229,204,.38)";
+                      (e.currentTarget as HTMLDivElement).style.boxShadow =
+                        "0 0 20px rgba(0,229,204,.08)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLDivElement).style.borderColor =
+                        "rgba(0,229,204,.16)";
+                      (e.currentTarget as HTMLDivElement).style.boxShadow =
+                        "none";
                     }}
                   >
                     <div
@@ -2468,7 +3565,23 @@ export default function NetworkScanPage() {
                         gap: 7,
                       }}
                     >
-                      <Network size={11} color="#00e5cc" /> Network Map
+                      <Network size={11} color="#00e5cc" />
+                      Network Map
+                      <span
+                        style={{
+                          marginLeft: "auto",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                          fontSize: 9,
+                          color: "rgba(0,229,204,0.5)",
+                          textTransform: "none",
+                          letterSpacing: 0,
+                        }}
+                      >
+                        <Maximize2 size={9} color="rgba(0,229,204,0.5)" />{" "}
+                        expand
+                      </span>
                     </div>
                     <NetworkTopology hosts={hosts} />
                   </div>
@@ -3421,47 +4534,95 @@ export default function NetworkScanPage() {
                     {report.summary.exploit_count === 0 &&
                       " No active exploits detected."}
                   </p>
-                  <button
-                    onClick={() => {
-                      const blob = new Blob([JSON.stringify(report, null, 2)], {
-                        type: "application/json",
-                      });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `SCN-${report.scan_id.slice(-6).toUpperCase()}-report.json`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.boxShadow =
-                        "0 8px 24px rgba(0,229,204,.45)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.boxShadow =
-                        "0 4px 16px rgba(0,229,204,.32)";
-                    }}
+                  {/* Download buttons */}
+                  <div
                     style={{
-                      padding: "12px 22px",
-                      borderRadius: 10,
-                      background: "linear-gradient(135deg, #00e5cc, #00b3a1)",
-                      color: "#04110e",
-                      border: "none",
-                      fontSize: 13,
-                      fontFamily: "var(--font-display)",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      display: "inline-flex",
+                      display: "flex",
+                      gap: 12,
+                      flexWrap: "wrap",
                       alignItems: "center",
-                      gap: 8,
-                      boxShadow: "0 4px 16px rgba(0,229,204,.32)",
-                      transition: "all .2s ease",
                     }}
                   >
-                    <Download size={15} /> Download Report (JSON)
-                  </button>
+                    {/* JSON */}
+                    <button
+                      onClick={() => {
+                        const prefix = `SCN-${report.scan_id.slice(-6).toUpperCase()}`;
+                        downloadJSON(report, `${prefix}-report.json`);
+                      }}
+                      style={{
+                        padding: "10px 20px",
+                        borderRadius: 9,
+                        background: "rgba(0,204,136,0.12)",
+                        color: "#00cc88",
+                        border: "1px solid rgba(0,204,136,0.35)",
+                        fontSize: 12,
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 7,
+                        transition: "all .2s ease",
+                      }}
+                    >
+                      <Download size={14} /> JSON
+                    </button>
+
+                    {/* HTML */}
+                    <button
+                      onClick={() => {
+                        const prefix = `SCN-${report.scan_id.slice(-6).toUpperCase()}`;
+                        downloadHTML(
+                          buildReportFromScanReport(report, undefined, vulns),
+                          `${prefix}-report.html`,
+                        );
+                      }}
+                      style={{
+                        padding: "10px 20px",
+                        borderRadius: 9,
+                        background: "rgba(77,158,255,0.12)",
+                        color: "#4d9eff",
+                        border: "1px solid rgba(77,158,255,0.35)",
+                        fontSize: 12,
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 7,
+                        transition: "all .2s ease",
+                      }}
+                    >
+                      <Download size={14} /> HTML
+                    </button>
+
+                    {/* PDF */}
+                    <button
+                      onClick={() => {
+                        openPrintPDF(
+                          buildReportFromScanReport(report, undefined, vulns),
+                        );
+                      }}
+                      style={{
+                        padding: "10px 20px",
+                        borderRadius: 9,
+                        background: "linear-gradient(135deg, #00e5cc, #00b3a1)",
+                        color: "#04110e",
+                        border: "none",
+                        fontSize: 12,
+                        fontFamily: "var(--font-mono)",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 7,
+                        boxShadow: "0 4px 14px rgba(0,229,204,.3)",
+                        transition: "all .2s ease",
+                      }}
+                    >
+                      <Download size={14} /> PDF
+                    </button>
+                  </div>
                 </div>
                 <div
                   style={{
@@ -3812,7 +4973,165 @@ export default function NetworkScanPage() {
         @keyframes slide-in-left { from{opacity:0;transform:translateX(-10px)} to{opacity:1;transform:translateX(0)} }
         @keyframes fade-in { from{opacity:0} to{opacity:1} }
         @keyframes pulse-soft { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.78;transform:scale(1.04)} }
+        @keyframes modal-in { from{opacity:0;transform:scale(0.97) translateY(8px)} to{opacity:1;transform:scale(1) translateY(0)} }
       `}</style>
+
+      {/* ── Network Map expanded modal ── */}
+      {networkMapOpen && (
+        <div
+          onClick={() => {
+            setNetworkMapOpen(false);
+            setSelectedMapHost(null);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            background: "rgba(0,0,0,0.72)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 24,
+            animation: "fade-in .18s ease",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(92vw, 1080px)",
+              height: "min(85vh, 680px)",
+              background: "var(--surface-0)",
+              border: "1px solid rgba(0,229,204,0.22)",
+              borderRadius: 18,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow:
+                "0 0 0 1px rgba(0,229,204,0.08), 0 32px 80px rgba(0,0,0,0.6)",
+              animation: "modal-in .22s cubic-bezier(0.16,1,0.3,1)",
+            }}
+          >
+            {/* Modal header */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "14px 20px",
+                borderBottom: "1px solid rgba(255,255,255,0.06)",
+                background: "rgba(0,229,204,0.03)",
+                flexShrink: 0,
+              }}
+            >
+              <Network
+                size={14}
+                color="#00e5cc"
+                style={{ filter: "drop-shadow(0 0 5px #00e5ccaa)" }}
+              />
+              <span
+                style={{
+                  fontSize: 13,
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 700,
+                  color: "var(--text-body)",
+                }}
+              >
+                Network Topology Map
+              </span>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginLeft: 8,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--text-quietest)",
+                    background: "rgba(0,229,204,0.08)",
+                    border: "1px solid rgba(0,229,204,0.15)",
+                    padding: "2px 8px",
+                    borderRadius: 5,
+                  }}
+                >
+                  {hosts.length} host{hosts.length !== 1 ? "s" : ""}
+                </span>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontFamily: "var(--font-mono)",
+                    color: "var(--text-quietest)",
+                    background: "rgba(255,204,0,0.08)",
+                    border: "1px solid rgba(255,204,0,0.15)",
+                    padding: "2px 8px",
+                    borderRadius: 5,
+                  }}
+                >
+                  {vulns.length} vuln{vulns.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <div
+                style={{
+                  marginLeft: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontFamily: "var(--font-mono)",
+                    color: "rgba(100,116,130,0.6)",
+                  }}
+                >
+                  ESC or click outside to close
+                </span>
+                <button
+                  onClick={() => {
+                    setNetworkMapOpen(false);
+                    setSelectedMapHost(null);
+                  }}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.04)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    transition: "background .15s ease",
+                    color: "var(--text-dim)",
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = "rgba(255,51,85,0.12)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background =
+                      "rgba(255,255,255,0.04)")
+                  }
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal body */}
+            <NetworkMapExpanded
+              hosts={hosts}
+              vulns={vulns}
+              selectedHost={selectedMapHost}
+              onSelectHost={setSelectedMapHost}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
