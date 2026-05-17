@@ -23,6 +23,7 @@ import { api } from "@/lib/api";
 import { fmtTime } from "@/lib/dates";
 import type { ApiScan, ApiScanType, ApiScanStatus } from "@/lib/types";
 import CreateScanModal from "@/components/shared/CreateScanModal";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 const POLL_INTERVAL = 5000; // ms — refresh while any scan is pending/running
 
@@ -540,19 +541,43 @@ export default function ScansPage() {
               {error}
             </div>
           ) : filtered.length === 0 ? (
-            <div
-              style={{
-                padding: 40,
-                textAlign: "center",
-                color: "var(--text-faintest)",
-                fontSize: 13,
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              {scans.length === 0
-                ? 'No scans yet. Click "New Scan" to get started.'
-                : "No scans match your filters."}
-            </div>
+            scans.length === 0 ? (
+              <EmptyState
+                icon={Activity}
+                title="No scans yet"
+                hint="Launch your first reconnaissance, vulnerability, or web assessment to populate this dashboard."
+                action={
+                  <button
+                    onClick={() => setShowModal(true)}
+                    style={{
+                      padding: "9px 18px",
+                      borderRadius: 8,
+                      background: "var(--accent)",
+                      color: "var(--accent-on-bg)",
+                      border: "none",
+                      fontSize: 12,
+                      fontFamily: "var(--font-mono)",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      letterSpacing: "0.5px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      boxShadow: "0 4px 14px var(--glow-accent-soft)",
+                    }}
+                  >
+                    <Plus size={13} /> New Scan
+                  </button>
+                }
+              />
+            ) : (
+              <EmptyState
+                icon={Filter}
+                title="No scans match these filters"
+                hint="Try widening the search or clearing one of the active filters above."
+                variant="muted"
+              />
+            )
           ) : (
             <div style={{ display: "flex", flexDirection: "column" }}>
               {filtered.map((scan) => {

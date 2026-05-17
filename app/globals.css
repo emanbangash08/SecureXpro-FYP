@@ -1012,3 +1012,162 @@ select option {
 .severity-bar-none {
   border-left: 3px solid var(--info);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Cyberpunk SOC visual utilities — additive, opt-in via class name.
+   Drop these on any element to get the SOC aesthetic without touching
+   inline styles. Theme-aware via the existing CSS variable system.
+   ───────────────────────────────────────────────────────────────────── */
+
+/* Subtle terminal scanline overlay — sits inside its parent and pulses.
+   Apply to a relative-positioned container; uses ::after so it doesn't
+   eat pointer events. Best on hero panels / cards you want to feel "live". */
+.sxp-scanline {
+  position: relative;
+  overflow: hidden;
+}
+.sxp-scanline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 6%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 100% 12px;
+  opacity: 0.5;
+  mix-blend-mode: screen;
+  animation: sxp-scan 6s linear infinite;
+}
+@keyframes sxp-scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+/* Soft glowing pulse — for "live" status dots, online indicators */
+.sxp-pulse {
+  animation: sxp-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes sxp-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px currentColor);
+    opacity: 1;
+  }
+  50% {
+    filter: drop-shadow(0 0 8px currentColor);
+    opacity: 0.7;
+  }
+}
+
+/* Hover lift — adds depth on row/card hover without layout shift */
+.sxp-lift {
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+.sxp-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Shimmer text — gradient sweep across the text, great for hero numbers */
+.sxp-shimmer-text {
+  background: linear-gradient(
+    100deg,
+    var(--text-strong) 0%,
+    var(--text-strong) 40%,
+    var(--accent-text) 50%,
+    var(--text-strong) 60%,
+    var(--text-strong) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: sxp-shimmer-sweep 6s ease-in-out infinite;
+}
+@keyframes sxp-shimmer-sweep {
+  0%,
+  100% {
+    background-position: 200% 0;
+  }
+  50% {
+    background-position: -100% 0;
+  }
+}
+
+/* Glitch hover — subtle character-level RGB-split on hover. Pure CSS.
+   Use sparingly on headings or call-to-action labels. */
+.sxp-glitch {
+  position: relative;
+  display: inline-block;
+}
+.sxp-glitch:hover::before,
+.sxp-glitch:hover::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.sxp-glitch:hover::before {
+  color: var(--accent);
+  transform: translate(-1px, 0);
+  mix-blend-mode: screen;
+  opacity: 0.7;
+}
+.sxp-glitch:hover::after {
+  color: #ff3355;
+  transform: translate(1px, 0);
+  mix-blend-mode: screen;
+  opacity: 0.4;
+}
+
+/* Fade-in-up — replaces the per-page @keyframes copies sprinkled around */
+.sxp-fade-in-up {
+  animation: sxp-fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes sxp-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Scrollbar polish — applies to anything that scrolls inside the app shell.
+   Thin, theme-aware, doesn't distract from content. */
+.sxp-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.sxp-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sxp-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+.sxp-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* Neon border on focus — wrap a control with .sxp-focus-ring for a
+   theme-aware accent ring (replaces the per-input onFocus/onBlur dance). */
+.sxp-focus-ring:focus-within {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}

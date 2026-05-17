@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtTime } from "@/lib/dates";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 type AgentScan = Awaited<ReturnType<typeof api.agents.listMyScans>>[number];
 
@@ -291,16 +292,22 @@ export default function AgentScansPage() {
               background: "var(--surface-1)",
               border: "1px dashed var(--border-default)",
               borderRadius: 14,
-              padding: 48,
-              textAlign: "center",
-              color: "var(--text-faintest)",
-              fontFamily: "var(--font-mono)",
-              fontSize: 12,
             }}
           >
-            {scans.length === 0
-              ? "No scans assigned to you yet."
-              : "No scans match these filters."}
+            {scans.length === 0 ? (
+              <EmptyState
+                icon={Server}
+                title="No scans assigned yet"
+                hint="Scans dispatched to this agent will appear here. The CLI runtime handles execution automatically — nothing to click."
+              />
+            ) : (
+              <EmptyState
+                icon={Filter}
+                title="No scans match these filters"
+                hint="Try clearing the search or status filter above."
+                variant="muted"
+              />
+            )}
           </div>
         ) : (
           <div

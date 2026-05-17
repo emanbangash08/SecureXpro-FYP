@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 type VulnItem = {
   id: string;
@@ -531,17 +532,23 @@ export default function VulnerabilitiesPage() {
             background: "var(--surface-1)",
             border: "1px solid var(--border-default)",
             borderRadius: 14,
-            padding: "48px",
-            textAlign: "center",
-            color: "var(--text-faintest)",
-            fontSize: 13,
-            fontFamily: "var(--font-mono)",
             boxShadow: "var(--card-shadow)",
           }}
         >
-          {vulns.length === 0
-            ? "No vulnerabilities found. Run a scan to discover issues."
-            : "No results match your search."}
+          {vulns.length === 0 ? (
+            <EmptyState
+              icon={ShieldAlert}
+              title="No vulnerabilities yet"
+              hint="Launch a Vulnerability or Full scan to correlate discovered services against the CVE database."
+            />
+          ) : (
+            <EmptyState
+              icon={Search}
+              title="No results match your search"
+              hint="Try a different keyword, severity filter, or clear the active filters."
+              variant="muted"
+            />
+          )}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>

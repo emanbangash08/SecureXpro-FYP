@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { shortAgo } from "@/lib/dates";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 type AgentScan = Awaited<ReturnType<typeof api.agents.listMyScans>>[number];
 type AgentMe = Awaited<ReturnType<typeof api.agents.getMe>>;
@@ -380,17 +381,16 @@ export default function AgentDashboardPage() {
           ) : scans.length === 0 ? (
             <div
               style={{
-                padding: 32,
-                textAlign: "center",
-                color: "var(--text-faintest)",
-                fontFamily: "var(--font-mono)",
-                fontSize: 12,
-                border: "1px dashed rgba(255,255,255,.08)",
+                border: "1px dashed var(--border-default)",
                 borderRadius: 12,
               }}
             >
-              No scans assigned to you yet. When a user picks you in the
-              &ldquo;Scan From&rdquo; dropdown, the scan will appear here.
+              <EmptyState
+                icon={Server}
+                title="No scans assigned yet"
+                hint='When a user selects this agent in the "Scan From" dropdown, the scan will appear here automatically.'
+                compact
+              />
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
