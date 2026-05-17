@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Server,
 } from "lucide-react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 
 type VulnItem = {
@@ -274,17 +275,24 @@ export default function VulnerabilitiesPage() {
             }}
           >
             <Zap size={12} color="#ff3355" />
-            <span
+            <Link
+              href="/exploits"
               style={{
                 fontFamily: "var(--font-mono)",
                 fontSize: 9,
                 color: "#ff3355",
                 textTransform: "uppercase",
                 letterSpacing: "1.5px",
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                cursor: "pointer",
               }}
             >
               {publiclyExploited} Active Exploits Available
-            </span>
+              <ArrowUpRight size={10} />
+            </Link>
           </div>
           <h1
             style={{

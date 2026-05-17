@@ -3,19 +3,15 @@ import React from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Printer, Download } from 'lucide-react'
-import { getAllScans } from '@/lib/mockData'
 import ReportViewer from '@/components/shared/ReportViewer'
 
 export default function AgentReportViewPage() {
   const params = useParams() as { id: string }
-  
-  // Mock mapping
-  const scanMap: any = {
-    'report-2': 'scan-web-1',
-    'report-4': 'scan-web-2',
-  }
-  const scanId = scanMap[params.id] || 'scan-web-1'
-  const scan = getAllScans().find(s => s.id === scanId)
+
+  // Mock mapping (mock data removed — scans come from live API)
+  const scanMap: any = {}
+  const scanId = scanMap[params.id] || ''
+  const scan = ([] as any[]).find((s: any) => s.id === scanId)
 
   if (!scan) return <div style={{ color: 'white', padding: 40 }}>Report data not found</div>
 

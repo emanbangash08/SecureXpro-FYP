@@ -84,6 +84,18 @@ export default function Sidebar({
     medium: number;
     low: number;
   } | null>(null);
+  const [exploitBadge, setExploitBadge] = useState<{
+    count: number;
+    color: string;
+    bg: string;
+    border: string;
+  } | null>(null);
+  const [vulnBadgeData, setVulnBadgeData] = useState<{
+    count: number;
+    color: string;
+    bg: string;
+    border: string;
+  } | null>(null);
   const { theme, toggleTheme } = useTheme();
 
   // Fetch real scan count; refresh whenever a scan completes
@@ -101,6 +113,57 @@ export default function Sidebar({
       .then((r) => setReportTotal(r.length))
       .catch(() => {});
   }, []);
+
+  // Fetch exploit badge — refreshes after each scan completes
+  useEffect(() => {
+    api.exploits
+      .list({ limit: 1 })
+      .then((r) => {
+        if (!r.total) { setExploitBadge(null); return; }
+        const lbl = r.summary?.by_label ?? {};
+        const _EXPLOIT_COLORS = [
+          { key: "trivial",     color: "#ff2a5f", bg: "rgba(255,42,95,0.13)",   border: "rgba(255,42,95,0.30)"   },
+          { key: "easy",        color: "#ff7a00", bg: "rgba(255,122,0,0.13)",   border: "rgba(255,122,0,0.30)"   },
+          { key: "moderate",    color: "#ffcc00", bg: "rgba(255,204,0,0.13)",   border: "rgba(255,204,0,0.30)"   },
+          { key: "hard",        color: "#4d9eff", bg: "rgba(77,158,255,0.13)",  border: "rgba(77,158,255,0.30)"  },
+          { key: "theoretical", color: "#8899aa", bg: "rgba(136,153,170,0.10)", border: "rgba(136,153,170,0.22)" },
+        ];
+        // Only count actionable (non-theoretical) findings; fall back to theoretical if nothing else
+        const actionable = ((lbl as any).trivial ?? 0)
+          + ((lbl as any).easy ?? 0)
+          + ((lbl as any).moderate ?? 0)
+          + ((lbl as any).hard ?? 0);
+        const count = actionable > 0 ? actionable : ((lbl as any).theoretical ?? 0);
+        const worst = _EXPLOIT_COLORS.find((c) => (lbl as any)[c.key] > 0) ?? _EXPLOIT_COLORS[4];
+        setExploitBadge({ count, color: worst.color, bg: worst.bg, border: worst.border });
+      })
+      .catch(() => {});
+  }, [scanCtx?.recentScans]);
+
+  // Fetch vuln badge — deduplicates by host|cve|port exactly like the Vulnerabilities page
+  useEffect(() => {
+    api.vulnerabilities
+      .getAll({ limit: 500 })
+      .then((res) => {
+        const items = res.items ?? [];
+        if (!items.length) { setVulnBadgeData(null); return; }
+        const seen = new Set<string>();
+        const c = { critical: 0, high: 0, medium: 0, low: 0 };
+        for (const v of items) {
+          const key = `${v.affected_host ?? "?"}|${v.cve_id ?? v.title}|${v.affected_port ?? ""}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (v.severity in c) c[v.severity as keyof typeof c]++;
+        }
+        const count = c.critical + c.high + c.medium + c.low;
+        if (!count) { setVulnBadgeData(null); return; }
+        if (c.critical > 0) setVulnBadgeData({ count, color: "#ff3355", bg: "rgba(255,51,85,0.13)",  border: "rgba(255,51,85,0.30)"  });
+        else if (c.high > 0)   setVulnBadgeData({ count, color: "#ff6b35", bg: "rgba(255,107,53,0.13)", border: "rgba(255,107,53,0.30)" });
+        else if (c.medium > 0) setVulnBadgeData({ count, color: "#ffcc00", bg: "rgba(255,204,0,0.13)",  border: "rgba(255,204,0,0.30)"  });
+        else                   setVulnBadgeData({ count, color: "#00cc88", bg: "rgba(0,204,136,0.13)",  border: "rgba(0,204,136,0.30)"  });
+      })
+      .catch(() => {});
+  }, [scanCtx?.recentScans]);
 
   // Fetch live vuln counts for threat level indicator
   useEffect(() => {
@@ -264,6 +327,9 @@ export default function Sidebar({
               : href === "/reports" && reportTotal != null && reportTotal > 0
                 ? String(reportTotal)
                 : null;
+          const isExploitItem = href === "/exploits";
+          const isVulnItem = href === "/vulnerabilities";
+          const vulnBadge = isVulnItem ? vulnBadgeData : null;
           const isAlert = false;
           return (
             <Link key={href} href={href} style={{ textDecoration: "none" }}>
@@ -372,6 +438,40 @@ export default function Sidebar({
                     }}
                   >
                     {badge}
+                  </span>
+                )}
+                {!scanning && isExploitItem && exploitBadge && (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontFamily: "var(--font-mono)",
+                      padding: "2px 6px",
+                      borderRadius: 10,
+                      background: exploitBadge.bg,
+                      color: exploitBadge.color,
+                      border: `1px solid ${exploitBadge.border}`,
+                      fontWeight: 700,
+                      boxShadow: `0 0 6px ${exploitBadge.color}33`,
+                    }}
+                  >
+                    {exploitBadge.count}
+                  </span>
+                )}
+                {!scanning && vulnBadge && (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontFamily: "var(--font-mono)",
+                      padding: "2px 6px",
+                      borderRadius: 10,
+                      background: vulnBadge.bg,
+                      color: vulnBadge.color,
+                      border: `1px solid ${vulnBadge.border}`,
+                      fontWeight: 700,
+                      boxShadow: `0 0 6px ${vulnBadge.color}33`,
+                    }}
+                  >
+                    {vulnBadge.count}
                   </span>
                 )}
                 {active && !scanning && (

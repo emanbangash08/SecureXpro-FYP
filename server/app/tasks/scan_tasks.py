@@ -52,6 +52,56 @@ async def _set_phase(db: AsyncIOMotorDatabase, scan_id: str, phase: str) -> None
     )
 
 
+async def _is_cancelled(db: AsyncIOMotorDatabase, scan_id: str) -> bool:
+    doc = await db.scans.find_one({"_id": ObjectId(scan_id)}, {"status": 1})
+    return bool(doc and doc.get("status") == ScanStatus.CANCELLED.value)
+
+
+async def _run_nmap_cancellable(
+    db: AsyncIOMotorDatabase, scan_id: str, target: str, options: dict
+) -> list | None:
+    """
+    Run nmap and poll the DB every 5 s for cancellation.
+    Returns parsed hosts on success, None if the scan was cancelled.
+    Uses proc.kill() (TerminateProcess on Windows) which actually works,
+    unlike SIGTERM revocation from Celery which is a no-op on Windows solo pool.
+    """
+    from app.services.recon_service import _build_nmap_flags, _parse_nmap_xml
+
+    flags = _build_nmap_flags(options)
+    cmd = ["nmap", "-oX", "-", *flags, target]
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    nmap_task = asyncio.create_task(proc.communicate())
+    try:
+        while not nmap_task.done():
+            await asyncio.sleep(5)
+            if await _is_cancelled(db, scan_id):
+                nmap_task.cancel()
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                logger.info("Scan %s cancelled — nmap process killed.", scan_id)
+                return None
+    except asyncio.CancelledError:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return None
+
+    stdout, stderr = await nmap_task
+    if proc.returncode not in (0, None):
+        raise RuntimeError(f"Nmap failed (exit {proc.returncode}): {stderr.decode()[:300]}")
+    return _parse_nmap_xml(stdout.decode())
+
+
 # ── Main execution ────────────────────────────────────────────────────────────
 
 async def _execute_scan(scan_id: str) -> None:
@@ -92,7 +142,9 @@ async def _execute_scan(scan_id: str) -> None:
             await _log(db, scan_id, "recon", "info", f"  Starting Nmap 7.94SVN — target: {nmap_host}")
             await _log(db, scan_id, "recon", "info",  "  Host discovery in progress (-Pn)...")
 
-            hosts = await recon_service.run_nmap_scan(nmap_host, options)
+            hosts = await _run_nmap_cancellable(db, scan_id, nmap_host, options)
+            if hosts is None:
+                return  # cancelled mid-nmap — worker is now free
 
             if hosts:
                 await _log(db, scan_id, "recon", "info", f"  Host {hosts[0].ip} is up")
@@ -130,6 +182,8 @@ async def _execute_scan(scan_id: str) -> None:
             )
 
         # ── Phase 2: Vulnerability Correlation (NVD CVE + EPSS + KEV) ──────────
+        if await _is_cancelled(db, scan_id):
+            return
         if hosts and scan_type in (ScanType.VULNERABILITY.value, ScanType.FULL.value):
             await _set_phase(db, scan_id, "vuln_correlation")
             await _log(db, scan_id, "vuln_correlation", "cmd",
@@ -182,6 +236,8 @@ async def _execute_scan(scan_id: str) -> None:
                            "  [+] No CVEs matched for discovered services")
 
         # ── Phase 3: Web Assessment (sub-phases) ─────────────────────────────
+        if await _is_cancelled(db, scan_id):
+            return
         if scan_type in (ScanType.WEB_ASSESSMENT.value, ScanType.FULL.value):
             from app.services import web_service
             web_url = _web_target(target)
@@ -532,6 +588,8 @@ async def _execute_scan(scan_id: str) -> None:
                        f"  [+] Web assessment complete — {len(_all_web)} total finding(s)")
 
         # ── Phase 4: Exploit Intelligence & Analysis (Module 3) ──────────────
+        if await _is_cancelled(db, scan_id):
+            return
         if scan_type in (ScanType.VULNERABILITY.value, ScanType.FULL.value):
             from app.services import exploit_service, metasploit_index
 

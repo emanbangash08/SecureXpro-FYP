@@ -2,11 +2,10 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Search, ChevronRight, Filter, Activity, Server, Globe, CheckCircle2, AlertCircle, Clock, ExternalLink } from 'lucide-react'
-import { getAllScans } from '@/lib/mockData'
 import type { ScanType, ScanStatus } from '@/lib/types'
 
 export default function AgentScansPage() {
-  const allScans = getAllScans()
+  const allScans: any[] = []
   const [searchTerm, setSearchTerm] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | ScanType>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all')
