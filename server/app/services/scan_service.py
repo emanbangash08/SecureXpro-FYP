@@ -50,16 +50,54 @@ def _dispatch_task(scan_id: str) -> str:
 async def create_scan(db: AsyncIOMotorDatabase, user_id: str, data: ScanCreate) -> ScanOut:
     await _check_concurrency(db, user_id)
 
-    doc = scan_document(user_id, data.target, data.scan_type, data.options.model_dump())
+    # Validate assigned agent if provided
+    agent_id = (data.assigned_agent_id or "").strip() or None
+    if agent_id:
+        # Only network/reconnaissance scans go through agents; web doesn't
+        # need network reachability so it can run on the central server.
+        if data.scan_type == ScanType.WEB_ASSESSMENT:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Web assessment scans cannot be assigned to an agent.",
+            )
+        try:
+            agent_oid = ObjectId(agent_id)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid agent id",
+            )
+        agent_user = await db.users.find_one(
+            {"_id": agent_oid, "role": "agent", "status": "active"},
+            {"_id": 1, "username": 1, "agent_last_seen": 1},
+        )
+        if not agent_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Agent not found or not active",
+            )
+
+    doc = scan_document(
+        user_id,
+        data.target,
+        data.scan_type,
+        data.options.model_dump(),
+        assigned_agent_id=agent_id,
+    )
     result = await db.scans.insert_one(doc)
     scan_id = str(result.inserted_id)
 
-    task_id = _dispatch_task(scan_id)
-
-    await db.scans.update_one(
-        {"_id": result.inserted_id},
-        {"$set": {"task_id": task_id, "updated_at": datetime.now(timezone.utc)}},
-    )
+    # If no agent assigned, queue normally with Celery so the worker runs Nmap.
+    # If an agent IS assigned, the scan stays in PENDING_AGENT — the agent
+    # runtime will poll, run Nmap inside its own network, and upload the
+    # result via POST /agents/me/scan-results/{scan_id}. At that point the
+    # backend dispatches a Celery task to continue with Phase 2+.
+    if not agent_id:
+        task_id = _dispatch_task(scan_id)
+        await db.scans.update_one(
+            {"_id": result.inserted_id},
+            {"$set": {"task_id": task_id, "updated_at": datetime.now(timezone.utc)}},
+        )
 
     created = await db.scans.find_one({"_id": result.inserted_id})
     return ScanOut(**doc_to_out(created))

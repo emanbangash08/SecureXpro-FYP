@@ -24,6 +24,13 @@ from app.models.scan_log import scan_log_document
 logger = logging.getLogger(__name__)
 
 
+class _WebPhaseSkipped(Exception):
+    """Raised from inside Phase 3 to bail out cleanly when the target has no
+    web server. Caught at the Phase 3 boundary so Phase 4+ can still run.
+    Only used for FULL scans — pure WEB_ASSESSMENT scans re-raise the
+    underlying connect error to mark the scan as failed."""
+
+
 # ── Target helpers ────────────────────────────────────────────────────────────
 
 def _nmap_target(target: str) -> str:
@@ -133,18 +140,58 @@ async def _execute_scan(scan_id: str) -> None:
         total_ports = 0
 
         # ── Phase 1: Reconnaissance ───────────────────────────────────────────
+        # If an agent already uploaded results, recon_results will be pre-populated;
+        # rehydrate from the DB and skip the Nmap invocation entirely.
+        agent_supplied_recon = bool(scan.get("recon_results")) and bool(scan.get("assigned_agent_id"))
+
         if scan_type in (ScanType.RECONNAISSANCE.value, ScanType.VULNERABILITY.value, ScanType.FULL.value):
             await _set_phase(db, scan_id, "recon")
-            nmap_host = _nmap_target(target)
-            cmd_str = build_nmap_cmd_string(nmap_host, options)
 
-            await _log(db, scan_id, "recon", "cmd",  f"> {cmd_str}")
-            await _log(db, scan_id, "recon", "info", f"  Starting Nmap 7.94SVN — target: {nmap_host}")
-            await _log(db, scan_id, "recon", "info",  "  Host discovery in progress (-Pn)...")
+            if agent_supplied_recon:
+                # Recon was performed by the remote agent. Reconstruct the
+                # HostResult dataclasses from the persisted dicts so Phase 2
+                # can consume them just like a locally-run scan.
+                from app.services.recon_service import HostResult, PortInfo
+                hosts = []
+                for h in (scan.get("recon_results") or []):
+                    hosts.append(HostResult(
+                        ip=h.get("ip", ""),
+                        hostname=h.get("hostname", ""),
+                        os_guess=h.get("os") or h.get("os_guess", ""),
+                        ports=[
+                            PortInfo(
+                                port=p.get("port"),
+                                protocol=p.get("protocol", "tcp"),
+                                state=p.get("state", "open"),
+                                service=p.get("service", ""),
+                                version=p.get("version", ""),
+                                extra_info=p.get("extra_info", ""),
+                            )
+                            for p in (h.get("ports") or [])
+                        ],
+                    ))
+                agent_user_id = scan.get("assigned_agent_id")
+                await _log(db, scan_id, "recon", "info",
+                           f"  Recon results received from remote agent (id={agent_user_id})")
+                for h in hosts:
+                    for p in h.ports:
+                        total_ports += 1
+                await _log(db, scan_id, "recon", "success",
+                           f"  [+] Recon complete (via agent) — {total_ports} open port(s), {len(hosts)} host(s)")
+                # No further DB write needed — agent already wrote recon_results.
+                # Fall through to Phase 2 with `hosts` populated.
 
-            hosts = await _run_nmap_cancellable(db, scan_id, nmap_host, options)
-            if hosts is None:
-                return  # cancelled mid-nmap — worker is now free
+            else:
+                nmap_host = _nmap_target(target)
+                cmd_str = build_nmap_cmd_string(nmap_host, options)
+
+                await _log(db, scan_id, "recon", "cmd",  f"> {cmd_str}")
+                await _log(db, scan_id, "recon", "info", f"  Starting Nmap 7.94SVN — target: {nmap_host}")
+                await _log(db, scan_id, "recon", "info",  "  Host discovery in progress (-Pn)...")
+
+                hosts = await _run_nmap_cancellable(db, scan_id, nmap_host, options)
+                if hosts is None:
+                    return  # cancelled mid-nmap — worker is now free
 
             if hosts:
                 await _log(db, scan_id, "recon", "info", f"  Host {hosts[0].ip} is up")
@@ -238,355 +285,369 @@ async def _execute_scan(scan_id: str) -> None:
         # ── Phase 3: Web Assessment (sub-phases) ─────────────────────────────
         if await _is_cancelled(db, scan_id):
             return
-        if scan_type in (ScanType.WEB_ASSESSMENT.value, ScanType.FULL.value):
-            from app.services import web_service
-            web_url = _web_target(target)
-            _parsed = urlparse(web_url)
-            _host = _parsed.hostname or web_url
-            _port = _parsed.port or (443 if _parsed.scheme == "https" else 80)
-            _scheme = _parsed.scheme
-            _all_web: list = []
-            _phase_timings: dict = {}
-            _ssl_info: dict = {}
-            _spider_urls: list[str] = []
+        # Only runs for explicit Web Assessment scans. Full Scan focuses on
+        # network/CVE/exploit/risk; if the user wants web checks they pick
+        # "Web Assessment" specifically. This keeps Full Scan fast and makes
+        # it agent-friendly (server can't reach targets behind agent NAT).
+        try:
+            if scan_type == ScanType.WEB_ASSESSMENT.value:
+                from app.services import web_service
+                web_url = _web_target(target)
+                _parsed = urlparse(web_url)
+                _host = _parsed.hostname or web_url
+                _port = _parsed.port or (443 if _parsed.scheme == "https" else 80)
+                _scheme = _parsed.scheme
+                _all_web: list = []
+                _phase_timings: dict = {}
+                _ssl_info: dict = {}
+                _spider_urls: list[str] = []
 
-            # Sub-phase: web_init — connect to target
-            await _set_phase(db, scan_id, "web_init")
-            _t_init = datetime.now(timezone.utc)
-            await _log(db, scan_id, "web_init", "cmd", f"> curl -ILk {web_url}")
-            await _log(db, scan_id, "web_init", "info", f"  Establishing connection to {web_url} ...")
-            try:
-                _client, _resp = await web_service.connect_to_target(web_url)
-            except Exception as _conn_exc:
-                await _log(db, scan_id, "web_init", "error",
-                           f"  [ERROR] Cannot connect to {web_url}: {_conn_exc}")
-                raise
-            _phase_timings["web_init"] = round((datetime.now(timezone.utc) - _t_init).total_seconds(), 1)
-            await _log(db, scan_id, "web_init", "success",
-                       f"  [+] HTTP {_resp.status_code} | Server: {_resp.headers.get('server', '?')} | {len(_resp.content)} bytes")
-
-            # Collect SSL cert info for HTTPS targets
-            if _scheme == "https":
+                # Sub-phase: web_init — connect to target
+                await _set_phase(db, scan_id, "web_init")
+                _t_init = datetime.now(timezone.utc)
+                await _log(db, scan_id, "web_init", "cmd", f"> curl -ILk {web_url}")
+                await _log(db, scan_id, "web_init", "info", f"  Establishing connection to {web_url} ...")
                 try:
-                    _ssl_info = web_service.get_ssl_info(_host, _port)
-                except Exception:
-                    _ssl_info = {}
+                    _client, _resp = await web_service.connect_to_target(web_url)
+                except Exception as _conn_exc:
+                    await _log(db, scan_id, "web_init", "error",
+                               f"  [ERROR] Cannot connect to {web_url}: {_conn_exc}")
+                    # Pure web-assessment scans cannot continue without a web target.
+                    # FULL scans should still produce recon/vuln/exploit/risk output,
+                    # so we raise the sentinel to skip the rest of Phase 3 only.
+                    if scan_type == ScanType.WEB_ASSESSMENT.value:
+                        raise
+                    await _log(db, scan_id, "web_init", "warning",
+                               "  [SKIPPED] No web server reachable — continuing to Phase 4")
+                    raise _WebPhaseSkipped() from _conn_exc
+                _phase_timings["web_init"] = round((datetime.now(timezone.utc) - _t_init).total_seconds(), 1)
+                await _log(db, scan_id, "web_init", "success",
+                           f"  [+] HTTP {_resp.status_code} | Server: {_resp.headers.get('server', '?')} | {len(_resp.content)} bytes")
 
-            # Sub-phase: web_headers — security headers, SSL, CORS, cookies
-            _t_headers = datetime.now(timezone.utc)
-            await _set_phase(db, scan_id, "web_headers")
-            await _log(db, scan_id, "web_headers", "cmd",
-                       "> securex-web --check-headers --check-ssl --check-cors --check-cookies")
-            await _log(db, scan_id, "web_headers", "info", "  Auditing HTTP security headers...")
+                # Collect SSL cert info for HTTPS targets
+                if _scheme == "https":
+                    try:
+                        _ssl_info = web_service.get_ssl_info(_host, _port)
+                    except Exception:
+                        _ssl_info = {}
 
-            for _check_fn, _label in [
-                (lambda: web_service.check_headers_and_disclosure(_resp, web_url), "headers"),
-                (lambda: web_service.check_ssl_or_https(_parsed, _resp, web_url), "ssl"),
-                (lambda: web_service.check_cors(_resp, web_url), "cors"),
-                (lambda: web_service.check_cookies(_resp, web_url), "cookies"),
-            ]:
+                # Sub-phase: web_headers — security headers, SSL, CORS, cookies
+                _t_headers = datetime.now(timezone.utc)
+                await _set_phase(db, scan_id, "web_headers")
+                await _log(db, scan_id, "web_headers", "cmd",
+                           "> securex-web --check-headers --check-ssl --check-cors --check-cookies")
+                await _log(db, scan_id, "web_headers", "info", "  Auditing HTTP security headers...")
+
+                for _check_fn, _label in [
+                    (lambda: web_service.check_headers_and_disclosure(_resp, web_url), "headers"),
+                    (lambda: web_service.check_ssl_or_https(_parsed, _resp, web_url), "ssl"),
+                    (lambda: web_service.check_cors(_resp, web_url), "cors"),
+                    (lambda: web_service.check_cookies(_resp, web_url), "cookies"),
+                ]:
+                    try:
+                        _fnd = _check_fn()
+                        _all_web += _fnd
+                        for _f in _fnd[:2]:
+                            _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                            await _log(db, scan_id, "web_headers", _lvl,
+                                       f"  [{_f.severity.value.upper()}] {_f.title}")
+                    except Exception as exc:
+                        await _log(db, scan_id, "web_headers", "warning",
+                                   f"  [!] {_label} check error: {exc}")
+
+                _phase_timings["web_headers"] = round((datetime.now(timezone.utc) - _t_headers).total_seconds(), 1)
+                await _log(db, scan_id, "web_headers", "success",
+                           f"  [+] Header audit complete — {len(_all_web)} finding(s) so far")
+
+                # Sub-phase: web_active — path probing, injection testing, CSRF
+                _t_active = datetime.now(timezone.utc)
+                await _set_phase(db, scan_id, "web_active")
+                await _log(db, scan_id, "web_active", "cmd",
+                           f"> securex-web --probe-paths {web_service.SENSITIVE_PATH_COUNT} "
+                           f"--check-methods --sqli --xss --csrf --cookies")
+                await _log(db, scan_id, "web_active", "info",
+                           f"  Probing {web_service.SENSITIVE_PATH_COUNT} sensitive paths...")
+
                 try:
-                    _fnd = _check_fn()
-                    _all_web += _fnd
-                    for _f in _fnd[:2]:
+                    _path_fnd = await web_service.check_sensitive_paths(_client, web_url)
+                    _all_web += _path_fnd
+                    for _f in _path_fnd[:5]:
                         _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
-                        await _log(db, scan_id, "web_headers", _lvl,
+                        await _log(db, scan_id, "web_active", _lvl,
+                                   f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                    if _path_fnd:
+                        await _log(db, scan_id, "web_active", "info",
+                                   f"  {len(_path_fnd)} exposed path(s) found")
+                except Exception as exc:
+                    await _log(db, scan_id, "web_active", "warning", f"  [!] Path probe error: {exc}")
+
+                try:
+                    _meth_fnd = await web_service.check_http_methods(_client, web_url)
+                    _all_web += _meth_fnd
+                    for _f in _meth_fnd:
+                        await _log(db, scan_id, "web_active", "warning",
                                    f"  [{_f.severity.value.upper()}] {_f.title}")
                 except Exception as exc:
-                    await _log(db, scan_id, "web_headers", "warning",
-                               f"  [!] {_label} check error: {exc}")
+                    await _log(db, scan_id, "web_active", "warning", f"  [!] Method check error: {exc}")
 
-            _phase_timings["web_headers"] = round((datetime.now(timezone.utc) - _t_headers).total_seconds(), 1)
-            await _log(db, scan_id, "web_headers", "success",
-                       f"  [+] Header audit complete — {len(_all_web)} finding(s) so far")
-
-            # Sub-phase: web_active — path probing, injection testing, CSRF
-            _t_active = datetime.now(timezone.utc)
-            await _set_phase(db, scan_id, "web_active")
-            await _log(db, scan_id, "web_active", "cmd",
-                       f"> securex-web --probe-paths {web_service.SENSITIVE_PATH_COUNT} "
-                       f"--check-methods --sqli --xss --csrf --cookies")
-            await _log(db, scan_id, "web_active", "info",
-                       f"  Probing {web_service.SENSITIVE_PATH_COUNT} sensitive paths...")
-
-            try:
-                _path_fnd = await web_service.check_sensitive_paths(_client, web_url)
-                _all_web += _path_fnd
-                for _f in _path_fnd[:5]:
-                    _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
-                    await _log(db, scan_id, "web_active", _lvl,
-                               f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
-                if _path_fnd:
-                    await _log(db, scan_id, "web_active", "info",
-                               f"  {len(_path_fnd)} exposed path(s) found")
-            except Exception as exc:
-                await _log(db, scan_id, "web_active", "warning", f"  [!] Path probe error: {exc}")
-
-            try:
-                _meth_fnd = await web_service.check_http_methods(_client, web_url)
-                _all_web += _meth_fnd
-                for _f in _meth_fnd:
-                    await _log(db, scan_id, "web_active", "warning",
-                               f"  [{_f.severity.value.upper()}] {_f.title}")
-            except Exception as exc:
-                await _log(db, scan_id, "web_active", "warning", f"  [!] Method check error: {exc}")
-
-            # SQL Injection
-            await _log(db, scan_id, "web_active", "info",
-                       "  Testing for SQL injection (error-based payloads)...")
-            try:
-                _sqli_fnd = await web_service.check_sql_injection(_client, web_url)
-                _all_web += _sqli_fnd
-                if _sqli_fnd:
-                    for _f in _sqli_fnd:
-                        await _log(db, scan_id, "web_active", "error",
-                                   f"  [CRITICAL] {_f.title} — param: {_f.affected_url.split('?')[-1]}")
-                else:
-                    await _log(db, scan_id, "web_active", "success",
-                               "  [+] No SQL injection vectors detected")
-            except Exception as exc:
-                await _log(db, scan_id, "web_active", "warning", f"  [!] SQLi check error: {exc}")
-
-            # XSS
-            await _log(db, scan_id, "web_active", "info",
-                       "  Testing for reflected XSS (probe injection)...")
-            try:
-                _xss_fnd = await web_service.check_xss(_client, web_url)
-                _all_web += _xss_fnd
-                if _xss_fnd:
-                    for _f in _xss_fnd:
-                        await _log(db, scan_id, "web_active", "error",
-                                   f"  [HIGH] {_f.title} — {_f.affected_url.split('?')[-1]}")
-                else:
-                    await _log(db, scan_id, "web_active", "success",
-                               "  [+] No reflected XSS detected")
-            except Exception as exc:
-                await _log(db, scan_id, "web_active", "warning", f"  [!] XSS check error: {exc}")
-
-            # CSRF
-            await _log(db, scan_id, "web_active", "info",
-                       "  Checking CSRF protection (forms + CORS credentials)...")
-            try:
-                _csrf_fnd = await web_service.check_csrf(_client, web_url, _resp)
-                _all_web += _csrf_fnd
-                for _f in _csrf_fnd:
-                    await _log(db, scan_id, "web_active", "warning",
-                               f"  [{_f.severity.value.upper()}] {_f.title}")
-                if not _csrf_fnd:
-                    await _log(db, scan_id, "web_active", "success",
-                               "  [+] No CSRF vulnerabilities detected")
-            except Exception as exc:
-                await _log(db, scan_id, "web_active", "warning", f"  [!] CSRF check error: {exc}")
-
-            # Cookie security on auth endpoints
-            await _log(db, scan_id, "web_active", "info",
-                       "  Probing auth endpoints for insecure cookie flags...")
-            try:
-                _ck_fnd = await web_service.check_cookies_on_endpoints(_client, web_url)
-                _all_web += _ck_fnd
-                for _f in _ck_fnd:
-                    await _log(db, scan_id, "web_active", "warning",
-                               f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
-                if not _ck_fnd:
-                    await _log(db, scan_id, "web_active", "success",
-                               "  [+] No insecure cookie flags found on auth endpoints")
-            except Exception as exc:
-                await _log(db, scan_id, "web_active", "warning", f"  [!] Cookie endpoint check error: {exc}")
-
-            # A04 — Insecure Design (rate limiting on auth endpoints)
-            await _log(db, scan_id, "web_active", "info",
-                       "  Testing auth endpoints for rate limiting (A04: Insecure Design)...")
-            try:
-                _rl_fnd = await web_service.check_rate_limiting(_client, web_url)
-                _all_web += _rl_fnd
-                for _f in _rl_fnd:
-                    await _log(db, scan_id, "web_active", "warning",
-                               f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
-                if not _rl_fnd:
-                    await _log(db, scan_id, "web_active", "success",
-                               "  [+] Auth endpoints appear to enforce rate limiting")
-            except Exception as exc:
-                await _log(db, scan_id, "web_active", "warning", f"  [!] Rate limit check error: {exc}")
-
-            # A08 — Software & Data Integrity Failures (Subresource Integrity)
-            await _log(db, scan_id, "web_active", "info",
-                       "  Inspecting HTML for missing Subresource Integrity (A08: Data Integrity)...")
-            try:
-                _sri_fnd = web_service.check_subresource_integrity(_resp, web_url)
-                _all_web += _sri_fnd
-                for _f in _sri_fnd:
-                    await _log(db, scan_id, "web_active", "warning",
-                               f"  [{_f.severity.value.upper()}] {_f.title}")
-                if not _sri_fnd:
-                    await _log(db, scan_id, "web_active", "success",
-                               "  [+] All cross-origin assets have SRI or none are loaded")
-            except Exception as exc:
-                await _log(db, scan_id, "web_active", "warning", f"  [!] SRI check error: {exc}")
-
-            # A09 — Security Logging & Monitoring Failures
-            await _log(db, scan_id, "web_active", "info",
-                       "  Probing for exposed logs & verbose error pages (A09: Logging)...")
-            try:
-                _log_fnd = await web_service.check_logging_and_monitoring(_client, web_url)
-                _all_web += _log_fnd
-                for _f in _log_fnd[:5]:
-                    _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
-                    await _log(db, scan_id, "web_active", _lvl,
-                               f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
-                if not _log_fnd:
-                    await _log(db, scan_id, "web_active", "success",
-                               "  [+] No log exposure or verbose error pages detected")
-            except Exception as exc:
-                await _log(db, scan_id, "web_active", "warning", f"  [!] Logging check error: {exc}")
-
-            _phase_timings["web_active"] = round((datetime.now(timezone.utc) - _t_active).total_seconds(), 1)
-
-            try:
-                await _client.aclose()
-            except Exception:
-                pass
-
-            # Sub-phase: web_zap — OWASP ZAP Docker active scan (WSL2)
-            _t_zap = datetime.now(timezone.utc)
-            await _set_phase(db, scan_id, "web_zap")
-            await _log(db, scan_id, "web_zap", "cmd",
-                       "> docker run ghcr.io/zaproxy/zaproxy:stable zap.sh -daemon --spider --ascan")
-            from app.services import zap_client
-            await _log(db, scan_id, "web_zap", "info",
-                       "  Checking Docker availability (WSL2)...")
-            docker_ok = await zap_client.check_docker_available()
-            if docker_ok:
-                await _log(db, scan_id, "web_zap", "info",
-                           "  Docker available — launching ZAP container...")
-                await _log(db, scan_id, "web_zap", "info",
-                           f"  Target: {web_url}")
-
-                # Progress logger runs concurrently so the UI doesn't appear frozen
-                _zap_stop = asyncio.Event()
-
-                async def _zap_progress():
-                    _steps = [
-                        (20,  "info",    "  ZAP daemon initialising (this takes ~30-60s on first run)..."),
-                        (50,  "info",    "  ZAP daemon ready — starting spider crawl..."),
-                        (90,  "info",    "  Spider crawl in progress — discovering endpoints..."),
-                        (150, "info",    "  Active scan started — testing injection points..."),
-                        (210, "info",    "  Active scan running — testing XSS vectors..."),
-                        (270, "info",    "  Active scan running — testing path traversal & SQLi..."),
-                        (330, "info",    "  Active scan running — testing CORS & security headers..."),
-                        (400, "warning", "  Still scanning — large site or slow target, please wait..."),
-                        (470, "info",    "  Finalising ZAP results..."),
-                    ]
-                    _t0 = asyncio.get_event_loop().time()
-                    for _delay, _lvl, _msg in _steps:
-                        _remaining = _delay - (asyncio.get_event_loop().time() - _t0)
-                        if _remaining > 0:
-                            try:
-                                await asyncio.wait_for(
-                                    asyncio.shield(asyncio.Event().wait()),
-                                    timeout=_remaining,
-                                )
-                            except asyncio.TimeoutError:
-                                pass
-                        if _zap_stop.is_set():
-                            break
-                        await _log(db, scan_id, "web_zap", _lvl, _msg)
-
-                _progress_task = asyncio.create_task(_zap_progress())
+                # SQL Injection
+                await _log(db, scan_id, "web_active", "info",
+                           "  Testing for SQL injection (error-based payloads)...")
                 try:
-                    _zap_findings = await zap_client.run_zap_scan(
-                        web_url,
-                        scan_id_suffix=scan_id[-8:],
-                    )
-                    _all_web += _zap_findings
-                except Exception as _zap_exc:
-                    await _log(db, scan_id, "web_zap", "warning",
-                               f"  [!] ZAP scan error: {_zap_exc}")
-                    _zap_findings = []
-                finally:
-                    _zap_stop.set()
-                    _progress_task.cancel()
-                    try:
-                        await _progress_task
-                    except asyncio.CancelledError:
-                        pass
-
-                # Collect discovered URLs from ZAP findings
-                for _f in _zap_findings:
-                    if _f.affected_url and _f.affected_url not in _spider_urls:
-                        _spider_urls.append(_f.affected_url)
-
-                if _zap_findings:
-                    await _log(db, scan_id, "web_zap", "info",
-                               "  Phase 2: Active scan complete")
-                    for _f in _zap_findings[:10]:
-                        _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
-                        await _log(db, scan_id, "web_zap", _lvl,
-                                   f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
-                    await _log(db, scan_id, "web_zap", "success",
-                               f"  [+] ZAP scan complete — {len(_zap_findings)} finding(s)")
-                else:
-                    await _log(db, scan_id, "web_zap", "success",
-                               "  [+] ZAP scan complete — no additional findings")
-            else:
-                await _log(db, scan_id, "web_zap", "warning",
-                           "  [!] Docker not available in WSL2 — skipping ZAP scan")
-                await _log(db, scan_id, "web_zap", "info",
-                           "  Run: wsl -d Ubuntu -u root -- service docker start")
-
-            _phase_timings["web_zap"] = round((datetime.now(timezone.utc) - _t_zap).total_seconds(), 1)
-
-            # Sub-phase: web_nikto — Nikto Docker misconfiguration scan (WSL2)
-            _t_nikto = datetime.now(timezone.utc)
-            await _set_phase(db, scan_id, "web_nikto")
-            await _log(db, scan_id, "web_nikto", "cmd",
-                       f"> docker run --rm sullo/nikto -h {web_url} -Tuning 123bde -Format json")
-            from app.services import nikto_client
-            await _log(db, scan_id, "web_nikto", "info",
-                       "  Checking Docker availability for Nikto...")
-            nikto_docker_ok = await nikto_client.check_docker_available()
-            if nikto_docker_ok:
-                await _log(db, scan_id, "web_nikto", "info",
-                           f"  Launching Nikto container — target: {web_url}")
-                await _log(db, scan_id, "web_nikto", "info",
-                           "  Tuning: interesting files, info disclosure, misconfigs, default files, server config")
-                try:
-                    _nikto_fnd = await nikto_client.run_nikto_scan(
-                        web_url,
-                        scan_id_suffix=scan_id[-8:],
-                    )
-                    _all_web += _nikto_fnd
-                    if _nikto_fnd:
-                        for _f in _nikto_fnd[:10]:
-                            _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
-                            await _log(db, scan_id, "web_nikto", _lvl,
-                                       f"  [{_f.severity.value.upper()}] {_f.title}")
-                        await _log(db, scan_id, "web_nikto", "success",
-                                   f"  [+] Nikto scan complete — {len(_nikto_fnd)} finding(s)")
+                    _sqli_fnd = await web_service.check_sql_injection(_client, web_url)
+                    _all_web += _sqli_fnd
+                    if _sqli_fnd:
+                        for _f in _sqli_fnd:
+                            await _log(db, scan_id, "web_active", "error",
+                                       f"  [CRITICAL] {_f.title} — param: {_f.affected_url.split('?')[-1]}")
                     else:
-                        await _log(db, scan_id, "web_nikto", "success",
-                                   "  [+] Nikto scan complete — no misconfigurations detected")
-                except Exception as _nikto_exc:
+                        await _log(db, scan_id, "web_active", "success",
+                                   "  [+] No SQL injection vectors detected")
+                except Exception as exc:
+                    await _log(db, scan_id, "web_active", "warning", f"  [!] SQLi check error: {exc}")
+
+                # XSS
+                await _log(db, scan_id, "web_active", "info",
+                           "  Testing for reflected XSS (probe injection)...")
+                try:
+                    _xss_fnd = await web_service.check_xss(_client, web_url)
+                    _all_web += _xss_fnd
+                    if _xss_fnd:
+                        for _f in _xss_fnd:
+                            await _log(db, scan_id, "web_active", "error",
+                                       f"  [HIGH] {_f.title} — {_f.affected_url.split('?')[-1]}")
+                    else:
+                        await _log(db, scan_id, "web_active", "success",
+                                   "  [+] No reflected XSS detected")
+                except Exception as exc:
+                    await _log(db, scan_id, "web_active", "warning", f"  [!] XSS check error: {exc}")
+
+                # CSRF
+                await _log(db, scan_id, "web_active", "info",
+                           "  Checking CSRF protection (forms + CORS credentials)...")
+                try:
+                    _csrf_fnd = await web_service.check_csrf(_client, web_url, _resp)
+                    _all_web += _csrf_fnd
+                    for _f in _csrf_fnd:
+                        await _log(db, scan_id, "web_active", "warning",
+                                   f"  [{_f.severity.value.upper()}] {_f.title}")
+                    if not _csrf_fnd:
+                        await _log(db, scan_id, "web_active", "success",
+                                   "  [+] No CSRF vulnerabilities detected")
+                except Exception as exc:
+                    await _log(db, scan_id, "web_active", "warning", f"  [!] CSRF check error: {exc}")
+
+                # Cookie security on auth endpoints
+                await _log(db, scan_id, "web_active", "info",
+                           "  Probing auth endpoints for insecure cookie flags...")
+                try:
+                    _ck_fnd = await web_service.check_cookies_on_endpoints(_client, web_url)
+                    _all_web += _ck_fnd
+                    for _f in _ck_fnd:
+                        await _log(db, scan_id, "web_active", "warning",
+                                   f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                    if not _ck_fnd:
+                        await _log(db, scan_id, "web_active", "success",
+                                   "  [+] No insecure cookie flags found on auth endpoints")
+                except Exception as exc:
+                    await _log(db, scan_id, "web_active", "warning", f"  [!] Cookie endpoint check error: {exc}")
+
+                # A04 — Insecure Design (rate limiting on auth endpoints)
+                await _log(db, scan_id, "web_active", "info",
+                           "  Testing auth endpoints for rate limiting (A04: Insecure Design)...")
+                try:
+                    _rl_fnd = await web_service.check_rate_limiting(_client, web_url)
+                    _all_web += _rl_fnd
+                    for _f in _rl_fnd:
+                        await _log(db, scan_id, "web_active", "warning",
+                                   f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                    if not _rl_fnd:
+                        await _log(db, scan_id, "web_active", "success",
+                                   "  [+] Auth endpoints appear to enforce rate limiting")
+                except Exception as exc:
+                    await _log(db, scan_id, "web_active", "warning", f"  [!] Rate limit check error: {exc}")
+
+                # A08 — Software & Data Integrity Failures (Subresource Integrity)
+                await _log(db, scan_id, "web_active", "info",
+                           "  Inspecting HTML for missing Subresource Integrity (A08: Data Integrity)...")
+                try:
+                    _sri_fnd = web_service.check_subresource_integrity(_resp, web_url)
+                    _all_web += _sri_fnd
+                    for _f in _sri_fnd:
+                        await _log(db, scan_id, "web_active", "warning",
+                                   f"  [{_f.severity.value.upper()}] {_f.title}")
+                    if not _sri_fnd:
+                        await _log(db, scan_id, "web_active", "success",
+                                   "  [+] All cross-origin assets have SRI or none are loaded")
+                except Exception as exc:
+                    await _log(db, scan_id, "web_active", "warning", f"  [!] SRI check error: {exc}")
+
+                # A09 — Security Logging & Monitoring Failures
+                await _log(db, scan_id, "web_active", "info",
+                           "  Probing for exposed logs & verbose error pages (A09: Logging)...")
+                try:
+                    _log_fnd = await web_service.check_logging_and_monitoring(_client, web_url)
+                    _all_web += _log_fnd
+                    for _f in _log_fnd[:5]:
+                        _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                        await _log(db, scan_id, "web_active", _lvl,
+                                   f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                    if not _log_fnd:
+                        await _log(db, scan_id, "web_active", "success",
+                                   "  [+] No log exposure or verbose error pages detected")
+                except Exception as exc:
+                    await _log(db, scan_id, "web_active", "warning", f"  [!] Logging check error: {exc}")
+
+                _phase_timings["web_active"] = round((datetime.now(timezone.utc) - _t_active).total_seconds(), 1)
+
+                try:
+                    await _client.aclose()
+                except Exception:
+                    pass
+
+                # Sub-phase: web_zap — OWASP ZAP Docker active scan (WSL2)
+                _t_zap = datetime.now(timezone.utc)
+                await _set_phase(db, scan_id, "web_zap")
+                await _log(db, scan_id, "web_zap", "cmd",
+                           "> docker run ghcr.io/zaproxy/zaproxy:stable zap.sh -daemon --spider --ascan")
+                from app.services import zap_client
+                await _log(db, scan_id, "web_zap", "info",
+                           "  Checking Docker availability (WSL2)...")
+                docker_ok = await zap_client.check_docker_available()
+                if docker_ok:
+                    await _log(db, scan_id, "web_zap", "info",
+                               "  Docker available — launching ZAP container...")
+                    await _log(db, scan_id, "web_zap", "info",
+                               f"  Target: {web_url}")
+
+                    # Progress logger runs concurrently so the UI doesn't appear frozen
+                    _zap_stop = asyncio.Event()
+
+                    async def _zap_progress():
+                        _steps = [
+                            (20,  "info",    "  ZAP daemon initialising (this takes ~30-60s on first run)..."),
+                            (50,  "info",    "  ZAP daemon ready — starting spider crawl..."),
+                            (90,  "info",    "  Spider crawl in progress — discovering endpoints..."),
+                            (150, "info",    "  Active scan started — testing injection points..."),
+                            (210, "info",    "  Active scan running — testing XSS vectors..."),
+                            (270, "info",    "  Active scan running — testing path traversal & SQLi..."),
+                            (330, "info",    "  Active scan running — testing CORS & security headers..."),
+                            (400, "warning", "  Still scanning — large site or slow target, please wait..."),
+                            (470, "info",    "  Finalising ZAP results..."),
+                        ]
+                        _t0 = asyncio.get_event_loop().time()
+                        for _delay, _lvl, _msg in _steps:
+                            _remaining = _delay - (asyncio.get_event_loop().time() - _t0)
+                            if _remaining > 0:
+                                try:
+                                    await asyncio.wait_for(
+                                        asyncio.shield(asyncio.Event().wait()),
+                                        timeout=_remaining,
+                                    )
+                                except asyncio.TimeoutError:
+                                    pass
+                            if _zap_stop.is_set():
+                                break
+                            await _log(db, scan_id, "web_zap", _lvl, _msg)
+
+                    _progress_task = asyncio.create_task(_zap_progress())
+                    try:
+                        _zap_findings = await zap_client.run_zap_scan(
+                            web_url,
+                            scan_id_suffix=scan_id[-8:],
+                        )
+                        _all_web += _zap_findings
+                    except Exception as _zap_exc:
+                        await _log(db, scan_id, "web_zap", "warning",
+                                   f"  [!] ZAP scan error: {_zap_exc}")
+                        _zap_findings = []
+                    finally:
+                        _zap_stop.set()
+                        _progress_task.cancel()
+                        try:
+                            await _progress_task
+                        except asyncio.CancelledError:
+                            pass
+
+                    # Collect discovered URLs from ZAP findings
+                    for _f in _zap_findings:
+                        if _f.affected_url and _f.affected_url not in _spider_urls:
+                            _spider_urls.append(_f.affected_url)
+
+                    if _zap_findings:
+                        await _log(db, scan_id, "web_zap", "info",
+                                   "  Phase 2: Active scan complete")
+                        for _f in _zap_findings[:10]:
+                            _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                            await _log(db, scan_id, "web_zap", _lvl,
+                                       f"  [{_f.severity.value.upper()}] {_f.title} — {_f.affected_url}")
+                        await _log(db, scan_id, "web_zap", "success",
+                                   f"  [+] ZAP scan complete — {len(_zap_findings)} finding(s)")
+                    else:
+                        await _log(db, scan_id, "web_zap", "success",
+                                   "  [+] ZAP scan complete — no additional findings")
+                else:
+                    await _log(db, scan_id, "web_zap", "warning",
+                               "  [!] Docker not available in WSL2 — skipping ZAP scan")
+                    await _log(db, scan_id, "web_zap", "info",
+                               "  Run: wsl -d Ubuntu -u root -- service docker start")
+
+                _phase_timings["web_zap"] = round((datetime.now(timezone.utc) - _t_zap).total_seconds(), 1)
+
+                # Sub-phase: web_nikto — Nikto Docker misconfiguration scan (WSL2)
+                _t_nikto = datetime.now(timezone.utc)
+                await _set_phase(db, scan_id, "web_nikto")
+                await _log(db, scan_id, "web_nikto", "cmd",
+                           f"> docker run --rm sullo/nikto -h {web_url} -Tuning 123bde -Format json")
+                from app.services import nikto_client
+                await _log(db, scan_id, "web_nikto", "info",
+                           "  Checking Docker availability for Nikto...")
+                nikto_docker_ok = await nikto_client.check_docker_available()
+                if nikto_docker_ok:
+                    await _log(db, scan_id, "web_nikto", "info",
+                               f"  Launching Nikto container — target: {web_url}")
+                    await _log(db, scan_id, "web_nikto", "info",
+                               "  Tuning: interesting files, info disclosure, misconfigs, default files, server config")
+                    try:
+                        _nikto_fnd = await nikto_client.run_nikto_scan(
+                            web_url,
+                            scan_id_suffix=scan_id[-8:],
+                        )
+                        _all_web += _nikto_fnd
+                        if _nikto_fnd:
+                            for _f in _nikto_fnd[:10]:
+                                _lvl = "error" if _f.severity.value in ("critical", "high") else "warning"
+                                await _log(db, scan_id, "web_nikto", _lvl,
+                                           f"  [{_f.severity.value.upper()}] {_f.title}")
+                            await _log(db, scan_id, "web_nikto", "success",
+                                       f"  [+] Nikto scan complete — {len(_nikto_fnd)} finding(s)")
+                        else:
+                            await _log(db, scan_id, "web_nikto", "success",
+                                       "  [+] Nikto scan complete — no misconfigurations detected")
+                    except Exception as _nikto_exc:
+                        await _log(db, scan_id, "web_nikto", "warning",
+                                   f"  [!] Nikto scan error: {_nikto_exc}")
+                else:
                     await _log(db, scan_id, "web_nikto", "warning",
-                               f"  [!] Nikto scan error: {_nikto_exc}")
-            else:
-                await _log(db, scan_id, "web_nikto", "warning",
-                           "  [!] Docker not available in WSL2 — skipping Nikto scan")
+                               "  [!] Docker not available in WSL2 — skipping Nikto scan")
 
-            _phase_timings["web_nikto"] = round((datetime.now(timezone.utc) - _t_nikto).total_seconds(), 1)
-            await web_service.persist_findings(db, scan_id, _all_web, _host, _port, _scheme)
-            _web_results = web_service.make_summary(
-                _resp, web_url, _all_web,
-                ssl_info=_ssl_info if _scheme == "https" else None,
-                spider_urls=list(dict.fromkeys(_spider_urls)),
-                phase_timings=_phase_timings,
-            )
-            await db.scans.update_one(
-                {"_id": ObjectId(scan_id)},
-                {"$set": {"web_results": _web_results, "updated_at": datetime.now(timezone.utc)}},
-            )
-            await _log(db, scan_id, "web_nikto", "success",
-                       f"  [+] Web assessment complete — {len(_all_web)} total finding(s)")
+                _phase_timings["web_nikto"] = round((datetime.now(timezone.utc) - _t_nikto).total_seconds(), 1)
+                await web_service.persist_findings(db, scan_id, _all_web, _host, _port, _scheme)
+                _web_results = web_service.make_summary(
+                    _resp, web_url, _all_web,
+                    ssl_info=_ssl_info if _scheme == "https" else None,
+                    spider_urls=list(dict.fromkeys(_spider_urls)),
+                    phase_timings=_phase_timings,
+                )
+                await db.scans.update_one(
+                    {"_id": ObjectId(scan_id)},
+                    {"$set": {"web_results": _web_results, "updated_at": datetime.now(timezone.utc)}},
+                )
+                await _log(db, scan_id, "web_nikto", "success",
+                           f"  [+] Web assessment complete — {len(_all_web)} total finding(s)")
 
+        except _WebPhaseSkipped:
+            pass
         # ── Phase 4: Exploit Intelligence & Analysis (Module 3) ──────────────
         if await _is_cancelled(db, scan_id):
             return

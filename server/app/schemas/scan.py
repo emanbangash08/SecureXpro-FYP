@@ -21,6 +21,10 @@ class ScanCreate(BaseModel):
     target: str
     scan_type: ScanType
     options: ScanOptions = ScanOptions()
+    # Optional — if set, the scan waits for a remote agent (a user with
+    # role=agent and a running agent runtime) to pick it up and run Nmap
+    # inside the agent's network.
+    assigned_agent_id: str | None = None
 
     @field_validator("target")
     @classmethod
@@ -48,6 +52,10 @@ class ScanOut(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     created_at: datetime
+    # ── Agent dispatch fields ────────────────────────────────────────────────
+    assigned_agent_id: str | None = None
+    agent_dispatched_at: datetime | None = None
+    agent_result_received_at: datetime | None = None
 
 
 class ScanStatusUpdate(BaseModel):
