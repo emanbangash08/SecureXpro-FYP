@@ -1,158 +1,507 @@
-﻿'use client'
-import { useState } from 'react'
-import Link from 'next/link'
-import { Search, ChevronRight, Filter, Activity, Server, Globe, CheckCircle2, AlertCircle, Clock, ExternalLink } from 'lucide-react'
-import type { ScanType, ScanStatus } from '@/lib/types'
+"use client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Search,
+  Filter,
+  Activity,
+  Server,
+  Globe,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  XCircle,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
+import { api } from "@/lib/api";
+import { fmtTime } from "@/lib/dates";
+
+type AgentScan = Awaited<ReturnType<typeof api.agents.listMyScans>>[number];
+
+const POLL_INTERVAL = 5000;
+
+function statusMeta(status: string) {
+  switch (status) {
+    case "pending_agent":
+      return { color: "#a78bfa", label: "Awaiting Pickup", Icon: Clock };
+    case "pending":
+      return { color: "#ffcc00", label: "Server Processing", Icon: Clock };
+    case "running":
+      return { color: "#00e5cc", label: "Running", Icon: Activity };
+    case "completed":
+      return { color: "#00cc88", label: "Completed", Icon: CheckCircle2 };
+    case "failed":
+      return { color: "#ff3355", label: "Failed", Icon: AlertCircle };
+    case "cancelled":
+      return { color: "var(--text-dim)", label: "Cancelled", Icon: XCircle };
+    default:
+      return { color: "#8899aa", label: status, Icon: AlertCircle };
+  }
+}
 
 export default function AgentScansPage() {
-  const allScans: any[] = []
-  const [searchTerm, setSearchTerm] = useState('')
-  const [typeFilter, setTypeFilter] = useState<'all' | ScanType>('all')
-  const [statusFilter, setStatusFilter] = useState<'all' | ScanStatus>('all')
+  const [scans, setScans] = useState<AgentScan[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | string>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | string>("all");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const filteredScans = allScans.filter((scan) => {
-    const matchesSearch = scan.name.toLowerCase().includes(searchTerm.toLowerCase()) || scan.target.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesType = typeFilter === 'all' || scan.type === typeFilter
-    const matchesStatus = statusFilter === 'all' || scan.status === statusFilter
-    return matchesSearch && matchesType && matchesStatus
-  })
-
-  const getStatusColor = (status: string) => {
-    switch(status) {
-      case 'completed': return '#00cc88'
-      case 'running': return '#00e5cc'
-      case 'failed': return '#ff3355'
-      default: return '#8899aa'
+  const refresh = useCallback(async () => {
+    try {
+      const list = await api.agents.listMyScans(100);
+      setScans(list);
+      setError("");
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load");
+    } finally {
+      setLoading(false);
     }
-  }
+  }, []);
 
-  const getSevColor = (sev: string) => {
-    switch(sev) {
-      case 'critical': return '#ff3355'
-      case 'high': return '#ff6b35'
-      case 'medium': return '#ffcc00'
-      default: return '#00cc88'
-    }
-  }
+  useEffect(() => {
+    refresh();
+    pollRef.current = setInterval(refresh, POLL_INTERVAL);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [refresh]);
+
+  const filtered = useMemo(() => {
+    return scans.filter((s) => {
+      const matchesSearch = s.target
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      const matchesType = typeFilter === "all" || s.scan_type === typeFilter;
+      const matchesStatus = statusFilter === "all" || s.status === statusFilter;
+      return matchesSearch && matchesType && matchesStatus;
+    });
+  }, [scans, searchTerm, typeFilter, statusFilter]);
+
+  const selectStyle: React.CSSProperties = {
+    background: "var(--surface-input)",
+    border: "1px solid var(--border-default)",
+    borderRadius: 8,
+    padding: "9px 12px",
+    color: "var(--text-dim)",
+    fontSize: 12,
+    fontFamily: "var(--font-mono)",
+    outline: "none",
+    cursor: "pointer",
+  };
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1400, fontFamily: 'var(--font-ui)', margin: '0 auto' }}>
-      
+    <div
+      style={{
+        padding: "28px 32px",
+        maxWidth: 1400,
+        fontFamily: "var(--font-ui)",
+        margin: "0 auto",
+      }}
+    >
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 24,
+          flexWrap: "wrap",
+          gap: 12,
+        }}
+      >
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#e8edf5', fontFamily: 'var(--font-display)', letterSpacing: '-.3px', marginBottom: 4 }}>
+          <h1
+            style={{
+              fontSize: 22,
+              fontWeight: 700,
+              color: "var(--text-strong)",
+              fontFamily: "var(--font-display)",
+              letterSpacing: "-.3px",
+              marginBottom: 4,
+            }}
+          >
             My Assigned Scans
           </h1>
-          <p style={{ fontSize: 12, color: '#8899aa', fontFamily: 'var(--font-mono)' }}>
-            Monitor and execute security assessments assigned to this deploy node.
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--text-dim)",
+              fontFamily: "var(--font-mono)",
+            }}
+          >
+            Scans dispatched to this agent. The CLI runtime handles execution
+            automatically — this list is read-only.
           </p>
         </div>
+
+        <button
+          type="button"
+          onClick={refresh}
+          style={{
+            padding: "8px 12px",
+            background: "transparent",
+            border: "1px solid var(--border-default)",
+            borderRadius: 8,
+            color: "var(--text-dim)",
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <RefreshCw size={12} /> Refresh
+        </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Filters */}
-        <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 12, padding: '16px 20px', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 250 }}>
-            <Search size={16} color="#8899aa" />
-            <input 
-              value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Search by name or target..."
-              style={{ background: 'transparent', border: 'none', color: '#e8edf5', fontSize: 13, fontFamily: 'var(--font-mono)', width: '100%', outline: 'none' }}
+        <div
+          style={{
+            background: "var(--surface-1)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: 12,
+            padding: "14px 18px",
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              background: "var(--surface-input)",
+              border: "1px solid var(--border-default)",
+              borderRadius: 8,
+              padding: "8px 12px",
+              flex: 1,
+              minWidth: 220,
+            }}
+          >
+            <Search size={14} color="var(--text-dim)" />
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by target…"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-body)",
+                fontSize: 13,
+                fontFamily: "var(--font-mono)",
+                width: "100%",
+                outline: "none",
+              }}
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Filter size={16} color="#4a5568" />
-            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as any)} style={{ background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '9px 12px', color: '#8899aa', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', cursor: 'pointer' }}>
-              <option value="all" style={{ background: '#07090f', color: '#e8edf5' }}>All Scan Types</option>
-              <option value="network" style={{ background: '#07090f', color: '#e8edf5' }}>Network Scans</option>
-              <option value="web" style={{ background: '#07090f', color: '#e8edf5' }}>Web Scans</option>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Filter size={14} color="var(--text-faintest)" />
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              style={selectStyle}
+            >
+              <option value="all">All Types</option>
+              <option value="reconnaissance">Reconnaissance</option>
+              <option value="vulnerability">Vulnerability</option>
+              <option value="full">Full Scan</option>
             </select>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Activity size={16} color="#4a5568" />
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} style={{ background: 'var(--surface-input)', border: '1px solid rgba(255,255,255,.08)', borderRadius: 8, padding: '9px 12px', color: '#8899aa', fontSize: 12, fontFamily: 'var(--font-mono)', outline: 'none', cursor: 'pointer' }}>
-              <option value="all" style={{ background: '#07090f', color: '#e8edf5' }}>All Statuses</option>
-              <option value="pending" style={{ background: '#07090f', color: '#e8edf5' }}>Pending</option>
-              <option value="running" style={{ background: '#07090f', color: '#e8edf5' }}>Running</option>
-              <option value="completed" style={{ background: '#07090f', color: '#e8edf5' }}>Completed</option>
-              <option value="failed" style={{ background: '#07090f', color: '#e8edf5' }}>Failed</option>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Activity size={14} color="var(--text-faintest)" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={selectStyle}
+            >
+              <option value="all">All Statuses</option>
+              <option value="pending_agent">Awaiting Pickup</option>
+              <option value="pending">Server Processing</option>
+              <option value="running">Running</option>
+              <option value="completed">Completed</option>
+              <option value="failed">Failed</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </div>
 
-          <div style={{ marginLeft: 'auto', fontSize: 12, fontFamily: 'var(--font-mono)', color: '#00e5cc', background: 'rgba(0,229,204,.1)', padding: '6px 12px', borderRadius: 20, border: '1px solid rgba(0,229,204,.2)' }}>
-            {filteredScans.length} Results
+          <div
+            style={{
+              marginLeft: "auto",
+              fontSize: 11,
+              fontFamily: "var(--font-mono)",
+              color: "var(--accent-text)",
+              background: "color-mix(in srgb, var(--accent) 10%, transparent)",
+              padding: "5px 12px",
+              borderRadius: 20,
+              border:
+                "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
+            }}
+          >
+            {filtered.length} / {scans.length} Results
           </div>
         </div>
 
-        {/* List */}
-        <div style={{ background: 'rgba(255,255,255,.02)', border: '1px solid rgba(255,255,255,.06)', borderRadius: 14, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,.05)', background: 'var(--surface-input)' }}>
-            <div style={{ width: 40 }}></div>
-            <div style={{ flex: 2, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Assessment Details</div>
-            <div style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Status</div>
-            <div style={{ flex: 1, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px' }}>Risk Profile</div>
-            <div style={{ width: 100, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#4a5568', textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'right' }}>Actions</div>
+        {/* Error / empty / list */}
+        {error && (
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: 8,
+              background: "rgba(255,51,85,.08)",
+              border: "1px solid rgba(255,51,85,.2)",
+              color: "#ff3355",
+              fontFamily: "var(--font-mono)",
+              fontSize: 12,
+            }}
+          >
+            {error}
           </div>
+        )}
 
-          {filteredScans.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#4a5568', fontSize: 13, fontFamily: 'var(--font-mono)' }}>
-              No scans match your criteria.
+        {loading && scans.length === 0 ? (
+          <div
+            style={{
+              padding: 48,
+              textAlign: "center",
+              color: "var(--text-dim)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 12,
+            }}
+          >
+            <Loader2
+              size={20}
+              style={{
+                animation: "spin 1s linear infinite",
+                marginBottom: 8,
+              }}
+            />
+            <div>Loading…</div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div
+            style={{
+              background: "var(--surface-1)",
+              border: "1px dashed var(--border-default)",
+              borderRadius: 14,
+              padding: 48,
+              textAlign: "center",
+              color: "var(--text-faintest)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 12,
+            }}
+          >
+            {scans.length === 0
+              ? "No scans assigned to you yet."
+              : "No scans match these filters."}
+          </div>
+        ) : (
+          <div
+            style={{
+              background: "var(--surface-1)",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: 14,
+              overflow: "hidden",
+            }}
+          >
+            {/* Header row */}
+            <div
+              style={{
+                display: "flex",
+                padding: "12px 18px",
+                borderBottom: "1px solid var(--border-subtle)",
+                background: "var(--surface-input)",
+                fontSize: 10,
+                fontFamily: "var(--font-mono)",
+                color: "var(--text-faintest)",
+                textTransform: "uppercase",
+                letterSpacing: "1px",
+              }}
+            >
+              <div style={{ width: 36 }} />
+              <div style={{ flex: 2 }}>Target & Type</div>
+              <div style={{ flex: 1 }}>Status</div>
+              <div style={{ flex: 1 }}>Pipeline</div>
+              <div style={{ flex: 1 }}>Times</div>
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {filteredScans.map(scan => (
-                <div key={scan.id} style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,.04)', transition: 'background .2s', cursor: 'default' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.03)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  
-                  <div style={{ width: 40 }}>
-                    {scan.type === 'network' ? <Server size={20} color="#4d9eff" /> : <Globe size={20} color="#a78bfa" />}
+
+            {filtered.map((scan) => {
+              const meta = statusMeta(scan.status);
+              const isWeb = scan.scan_type === "web_assessment";
+              return (
+                <div
+                  key={scan.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "14px 18px",
+                    borderBottom: "1px solid var(--border-subtle)",
+                  }}
+                >
+                  <div style={{ width: 36 }}>
+                    {isWeb ? (
+                      <Globe size={18} color="#a78bfa" />
+                    ) : (
+                      <Server size={18} color="#4d9eff" />
+                    )}
                   </div>
 
-                  <div style={{ flex: 2, paddingRight: 20 }}>
-                    <div style={{ fontSize: 14, fontFamily: 'var(--font-display)', fontWeight: 600, color: '#e8edf5', marginBottom: 4 }}>
-                      {scan.name}
+                  <div style={{ flex: 2, paddingRight: 16, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontFamily: "var(--font-display)",
+                        fontWeight: 600,
+                        color: "var(--text-strong)",
+                        marginBottom: 3,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {scan.target}
                     </div>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#8899aa' }}>{scan.target}</span>
-                      <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#4a5568', display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={12} /> {new Date(scan.startedAt).toLocaleDateString()}</span>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontFamily: "var(--font-mono)",
+                          color: "var(--text-dim)",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {scan.scan_type.replace("_", " ")}
+                      </span>
                     </div>
                   </div>
 
                   <div style={{ flex: 1 }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 20, background: `${getStatusColor(scan.status)}15`, border: `1px solid ${getStatusColor(scan.status)}30`, color: getStatusColor(scan.status), fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                      {scan.status === 'completed' ? <CheckCircle2 size={12} /> : scan.status === 'running' ? <Activity size={12} /> : <AlertCircle size={12} />}
-                      {scan.status}
-                    </div>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 10px",
+                        borderRadius: 20,
+                        background: `${meta.color}15`,
+                        border: `1px solid ${meta.color}30`,
+                        color: meta.color,
+                        fontSize: 10,
+                        fontFamily: "var(--font-mono)",
+                        textTransform: "uppercase",
+                        letterSpacing: "1px",
+                      }}
+                    >
+                      {scan.status === "running" ? (
+                        <Loader2
+                          size={10}
+                          style={{ animation: "spin 1s linear infinite" }}
+                        />
+                      ) : (
+                        <meta.Icon size={10} />
+                      )}
+                      {meta.label}
+                    </span>
                   </div>
 
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', background: `${getSevColor(scan.severity)}15`, color: getSevColor(scan.severity), border: `1px solid ${getSevColor(scan.severity)}30` }}>
-                        {scan.severity}
-                      </span>
-                      <span style={{ fontSize: 12, fontFamily: 'var(--font-display)', color: '#e8edf5', fontWeight: 600 }}>
-                        {scan.vulnerabilityCount} <span style={{ fontSize: 10, color: '#4a5568', fontWeight: 400 }}>vulns</span>
-                      </span>
-                    </div>
+                  <div
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 2,
+                      fontSize: 10,
+                      fontFamily: "var(--font-mono)",
+                      color: "var(--text-dim)",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      {scan.agent_dispatched_at ? (
+                        <CheckCircle2 size={10} color="#00cc88" />
+                      ) : (
+                        <Clock size={10} color="#ffcc00" />
+                      )}{" "}
+                      claimed
+                    </span>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      {scan.agent_result_received_at ? (
+                        <CheckCircle2 size={10} color="#00cc88" />
+                      ) : (
+                        <Clock size={10} color="#ffcc00" />
+                      )}{" "}
+                      uploaded
+                    </span>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      {scan.status === "completed" ? (
+                        <CheckCircle2 size={10} color="#00cc88" />
+                      ) : scan.status === "failed" ? (
+                        <AlertCircle size={10} color="#ff3355" />
+                      ) : (
+                        <Clock size={10} color="#ffcc00" />
+                      )}{" "}
+                      delivered
+                    </span>
                   </div>
 
-                  <div style={{ width: 100, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button style={{ padding: '6px 10px', borderRadius: 6, background: 'rgba(0,229,204,.1)', border: '1px solid rgba(0,229,204,.3)', color: '#00e5cc', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontFamily: 'var(--font-mono)', transition: 'all .2s' }}>
-                      <Activity size={14} /> Execute
-                    </button>
+                  <div
+                    style={{
+                      flex: 1,
+                      fontSize: 10,
+                      fontFamily: "var(--font-mono)",
+                      color: "var(--text-faintest)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 2,
+                    }}
+                  >
+                    <span>
+                      <Clock size={9} /> queued {fmtTime(scan.created_at)}
+                    </span>
+                    {scan.completed_at && (
+                      <span>
+                        <CheckCircle2 size={9} /> done{" "}
+                        {fmtTime(scan.completed_at)}
+                      </span>
+                    )}
                   </div>
-                  
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
-  )
+  );
 }

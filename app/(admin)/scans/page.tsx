@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { fmtTime } from "@/lib/dates";
 import type { ApiScan, ApiScanType, ApiScanStatus } from "@/lib/types";
 import CreateScanModal from "@/components/shared/CreateScanModal";
 
@@ -37,6 +38,8 @@ function statusColor(status: ApiScanStatus) {
       return "#ff3355";
     case "cancelled":
       return "var(--text-dim)";
+    case "pending_agent":
+      return "#a78bfa";
     default:
       return "#ffcc00";
   }
@@ -80,7 +83,10 @@ function StatusBadge({ status }: { status: ApiScanStatus }) {
         ? Activity
         : status === "cancelled"
           ? XCircle
-          : AlertCircle;
+          : status === "pending_agent"
+            ? Server
+            : AlertCircle;
+  const label = status === "pending_agent" ? "WAITING FOR AGENT" : status;
   return (
     <div
       style={{
@@ -103,7 +109,7 @@ function StatusBadge({ status }: { status: ApiScanStatus }) {
       ) : (
         <Icon size={10} />
       )}
-      {status}
+      {label}
     </div>
   );
 }
@@ -150,7 +156,10 @@ export default function ScansPage() {
   // Poll while any scan is active so status updates appear automatically
   useEffect(() => {
     const hasActive = scans.some(
-      (s) => s.status === "pending" || s.status === "running",
+      (s) =>
+        s.status === "pending" ||
+        s.status === "pending_agent" ||
+        s.status === "running",
     );
     if (hasActive) {
       pollRef.current = setInterval(fetchScans, POLL_INTERVAL);
@@ -596,11 +605,37 @@ export default function ScansPage() {
                           color: "var(--text-faintest)",
                           display: "flex",
                           alignItems: "center",
-                          gap: 4,
+                          gap: 8,
+                          flexWrap: "wrap",
                         }}
                       >
-                        <Clock size={10} />{" "}
-                        {new Date(scan.created_at).toLocaleString()}
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          <Clock size={10} />
+                          {fmtTime(scan.created_at)}
+                        </span>
+                        {scan.assigned_agent_id && (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              padding: "1px 6px",
+                              borderRadius: 4,
+                              background: "rgba(167,139,250,.12)",
+                              border: "1px solid rgba(167,139,250,.25)",
+                              color: "#a78bfa",
+                            }}
+                            title="Scan executed by a remote agent"
+                          >
+                            <Server size={10} /> via agent
+                          </span>
+                        )}
                       </div>
                     </div>
 

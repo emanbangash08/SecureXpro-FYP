@@ -24,6 +24,7 @@ import {
   type ExploitCategory,
 } from "@/lib/api";
 import type { ApiScan } from "@/lib/types";
+import { fmtTime } from "@/lib/dates";
 
 type Vuln = {
   id: string;
@@ -1029,13 +1030,19 @@ export default function ScanDetailPage() {
               </h1>
               <Badge label={scanType.replace("_", " ")} color="#00e5cc" />
               <Badge
-                label={scan.status}
+                label={
+                  scan.status === "pending_agent"
+                    ? "waiting for agent"
+                    : scan.status
+                }
                 color={
                   scan.status === "completed"
                     ? "#00cc88"
                     : scan.status === "failed"
                       ? "#ff3355"
-                      : "var(--text-dim)"
+                      : scan.status === "pending_agent"
+                        ? "#a78bfa"
+                        : "var(--text-dim)"
                 }
               />
             </div>
@@ -1050,18 +1057,101 @@ export default function ScanDetailPage() {
               }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <Clock size={11} /> Started:{" "}
-                {scan.started_at
-                  ? new Date(scan.started_at).toLocaleString()
-                  : "—"}
+                <Clock size={11} /> Started: {fmtTime(scan.started_at)}
               </span>
               <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
                 <CheckCircle2 size={11} /> Finished:{" "}
-                {scan.completed_at
-                  ? new Date(scan.completed_at).toLocaleString()
-                  : "—"}
+                {fmtTime(scan.completed_at)}
               </span>
             </div>
+
+            {/* Distributed scanning timeline — shown only when the scan was
+                dispatched to a remote agent. Tells the user where the scan is
+                in the user → agent → user round-trip. */}
+            {scan.assigned_agent_id && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "rgba(167,139,250,.06)",
+                  border: "1px solid rgba(167,139,250,.18)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  flexWrap: "wrap",
+                  fontSize: 11,
+                  fontFamily: "var(--font-mono)",
+                  color: "var(--text-dim)",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    color: "#a78bfa",
+                    fontWeight: 600,
+                  }}
+                >
+                  REMOTE AGENT
+                </span>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                  title="Scan submitted to agent queue"
+                >
+                  <CheckCircle2 size={11} color="#00cc88" />
+                  Submitted&nbsp;
+                  <span style={{ color: "var(--text-body)" }}>
+                    {fmtTime(scan.created_at)}
+                  </span>
+                </span>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                  title="Agent claimed the scan and started running Nmap on its network"
+                >
+                  {scan.agent_dispatched_at ? (
+                    <CheckCircle2 size={11} color="#00cc88" />
+                  ) : (
+                    <Clock size={11} color="#ffcc00" />
+                  )}
+                  Picked up by agent&nbsp;
+                  <span style={{ color: "var(--text-body)" }}>
+                    {scan.agent_dispatched_at
+                      ? fmtTime(scan.agent_dispatched_at)
+                      : "waiting…"}
+                  </span>
+                </span>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}
+                  title="Agent uploaded Nmap results; server is running vuln / exploit / risk phases"
+                >
+                  {scan.agent_result_received_at ? (
+                    <CheckCircle2 size={11} color="#00cc88" />
+                  ) : (
+                    <Clock size={11} color="#ffcc00" />
+                  )}
+                  Results received&nbsp;
+                  <span style={{ color: "var(--text-body)" }}>
+                    {scan.agent_result_received_at
+                      ? fmtTime(scan.agent_result_received_at)
+                      : "waiting…"}
+                  </span>
+                </span>
+              </div>
+            )}
 
             {/* Scan options pill row */}
             {scan.options && (

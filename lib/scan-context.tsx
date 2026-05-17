@@ -313,7 +313,11 @@ export function ScanProvider({ children }: { children: ReactNode }) {
           setStageProgress(
             Object.fromEntries(PIPELINE.map((p) => [p.id, 100])),
           );
-        } else if (s.status === "pending" || s.status === "running") {
+        } else if (
+          s.status === "pending" ||
+          s.status === "pending_agent" ||
+          s.status === "running"
+        ) {
           const logsRes = await api.scans.getLogs(scanId, 0);
           setLogs(logsRes.logs);
           logSkipRef.current = logsRes.count;
@@ -349,7 +353,10 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   }, [stopPolling]);
 
   const isScanning =
-    !!scan && (scan.status === "pending" || scan.status === "running");
+    !!scan &&
+    (scan.status === "pending" ||
+      scan.status === "pending_agent" ||
+      scan.status === "running");
 
   return (
     <ScanContext.Provider

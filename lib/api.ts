@@ -651,6 +651,51 @@ export const api = {
     },
   },
 
+  agents: {
+    /** List active agents with `online` derived from recent heartbeat. */
+    listAvailable: () =>
+      request<
+        Array<{
+          id: string;
+          username: string;
+          full_name: string;
+          last_seen: string | null;
+          online: boolean;
+        }>
+      >("/api/v1/agents/available"),
+
+    /** Agent-only: scans assigned to me (any status), newest first. */
+    listMyScans: (limit = 50) =>
+      request<
+        Array<{
+          id: string;
+          user_id: string;
+          target: string;
+          scan_type: string;
+          status: string;
+          options: Record<string, unknown>;
+          current_phase: string | null;
+          exploit_count: number;
+          error: string | null;
+          created_at: string;
+          agent_dispatched_at: string | null;
+          agent_result_received_at: string | null;
+          started_at: string | null;
+          completed_at: string | null;
+        }>
+      >(`/api/v1/agents/me/scans?limit=${limit}`),
+
+    /** Agent-only: my own profile + CLI online status. */
+    getMe: () =>
+      request<{
+        id: string;
+        username: string;
+        full_name: string;
+        last_seen: string | null;
+        online: boolean;
+      }>("/api/v1/agents/me"),
+  },
+
   settings: {
     get: () => request<PlatformSettings>("/api/v1/settings/"),
     update: (data: Partial<PlatformSettings>) =>

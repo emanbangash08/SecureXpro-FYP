@@ -38,6 +38,20 @@ const adminNav = [
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
+// Regular users get the same workflows as admin (scans, vulns, exploits,
+// reports) but no agent management — admins create/configure agents, users
+// just pick one from the "SCAN FROM" dropdown when launching a scan.
+const userNav = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Network Scans", href: "/scans/network", icon: Network },
+  { label: "Web Scans", href: "/scans/web", icon: Globe },
+  { label: "All Scans", href: "/scans", icon: Activity },
+  { label: "Vulnerabilities", href: "/vulnerabilities", icon: AlertTriangle },
+  { label: "Exploits", href: "/exploits", icon: Crosshair },
+  { label: "Reports", href: "/reports", icon: FileText },
+  { label: "Settings", href: "/settings", icon: Settings },
+];
+
 const agentNav = [
   { label: "Dashboard", href: "/agent-dashboard", icon: LayoutDashboard },
   { label: "My Scans", href: "/agent-scans", icon: Activity },
@@ -71,7 +85,8 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const { logout, user } = useAuth();
-  const nav = role === "agent" ? agentNav : adminNav;
+  const nav =
+    role === "agent" ? agentNav : role === "admin" ? adminNav : userNav;
   const scanCtx = useScanContext();
   const webCtx = useWebScanContext();
   const isScanning = scanCtx?.isScanning ?? false;
