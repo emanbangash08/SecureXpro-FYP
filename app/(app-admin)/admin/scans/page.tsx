@@ -305,9 +305,17 @@ const EMPTY_FILTERS: Filters = {
   date_from: '', date_to: '', has_exploits: '', user_id: '',
 }
 
-/* ─── grid layout — USER NAME FIRST ──────────────────────────── */
-const GRID = '1.5fr 1.5fr 110px 130px 72px 92px 96px 96px 80px'
-const HEADERS = ['User', 'Target', 'Type', 'Status', 'Vulns', 'Risk', 'Started', 'Completed', 'Details']
+/* ─── grid layout ─────────────────────────────────────────────── */
+// 8 columns: drop one date column, remove scan-id noise, View always visible
+const GRID    = '150px 1fr 95px 120px 60px 82px 110px 64px'
+const HEADERS = ['User', 'Target', 'Type', 'Status', 'Vulns', 'Risk', 'Date', '']
+
+const TYPE_SHORT: Record<string, string> = {
+  reconnaissance: 'RECON',
+  vulnerability:  'VULN',
+  web_assessment: 'WEB',
+  full:           'FULL',
+}
 
 /* ─── main page ───────────────────────────────────────────────── */
 export default function AdminScansPage() {
@@ -537,18 +545,15 @@ export default function AdminScansPage() {
               </div>
 
               {/* ② Target */}
-              <div>
-                <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.target}>
                   {s.target}
-                </div>
-                <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', marginTop: 1 }}>
-                  id:{s.id.slice(-8)}
                 </div>
               </div>
 
-              {/* ③ Type */}
-              <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', padding: '3px 7px', borderRadius: 5, background: `${tc.color}10`, color: tc.color, border: `1px solid ${tc.color}25`, textTransform: 'uppercase', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>
-                {s.scan_type.replace(/_/g, ' ')}
+              {/* ③ Type — short label to avoid overflow */}
+              <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', padding: '3px 8px', borderRadius: 5, background: `${tc.color}10`, color: tc.color, border: `1px solid ${tc.color}25`, textTransform: 'uppercase', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>
+                {TYPE_SHORT[s.scan_type] ?? s.scan_type}
               </span>
 
               {/* ④ Status — with animated dot for running/pending */}
@@ -577,19 +582,23 @@ export default function AdminScansPage() {
                 )}
               </div>
 
-              {/* ⑦ Started */}
-              <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                {s.started_at ? new Date(s.started_at).toLocaleDateString() : '—'}
+              {/* ⑦ Date — show completed if done, else started, else created */}
+              <div>
+                <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                  {s.completed_at
+                    ? new Date(s.completed_at).toLocaleDateString()
+                    : s.started_at
+                    ? new Date(s.started_at).toLocaleDateString()
+                    : new Date(s.created_at).toLocaleDateString()}
+                </div>
+                <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--text-quietest)', marginTop: 1 }}>
+                  {s.completed_at ? 'done' : s.started_at ? 'started' : 'queued'}
+                </div>
               </div>
 
-              {/* ⑧ Completed */}
-              <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                {s.completed_at ? new Date(s.completed_at).toLocaleDateString() : '—'}
-              </div>
-
-              {/* ⑨ View */}
+              {/* ⑧ View */}
               <button onClick={() => setDetailId(s.id)}
-                style={{ padding: '5px 12px', borderRadius: 6, background: 'rgba(0,229,204,0.06)', border: '1px solid rgba(0,229,204,0.2)', color: 'var(--accent-text)', fontSize: 10, fontFamily: 'var(--font-mono)', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                style={{ padding: '5px 10px', borderRadius: 6, background: 'rgba(0,229,204,0.06)', border: '1px solid rgba(0,229,204,0.2)', color: 'var(--accent-text)', fontSize: 10, fontFamily: 'var(--font-mono)', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap', width: '100%' }}>
                 View
               </button>
             </div>

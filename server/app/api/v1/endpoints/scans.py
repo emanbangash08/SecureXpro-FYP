@@ -8,6 +8,7 @@ from app.schemas.user import UserOut
 from app.schemas.scan import ScanCreate, ScanOut, ScanListOut
 from app.models.scan import ScanType, ScanStatus
 from app.services import scan_service
+from app.services.audit_service import log_action
 from app.utils.helpers import doc_to_out
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
@@ -19,7 +20,14 @@ async def create_scan(
     db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: UserOut = Depends(get_current_user),
 ):
-    return await scan_service.create_scan(db, current_user.id, data)
+    result = await scan_service.create_scan(db, current_user.id, data)
+    await log_action(
+        db, "scan.create", "success",
+        user_id=current_user.id,
+        username=current_user.username,
+        details={"scan_id": result.id, "target": data.target, "scan_type": data.scan_type},
+    )
+    return result
 
 
 @router.get("/", response_model=ScanListOut)
@@ -49,7 +57,14 @@ async def cancel_scan(
     db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: UserOut = Depends(get_current_user),
 ):
-    return await scan_service.cancel_scan(db, scan_id, current_user.id)
+    result = await scan_service.cancel_scan(db, scan_id, current_user.id)
+    await log_action(
+        db, "scan.cancel", "success",
+        user_id=current_user.id,
+        username=current_user.username,
+        details={"scan_id": scan_id},
+    )
+    return result
 
 
 @router.post("/{scan_id}/retry", response_model=ScanOut)
@@ -58,7 +73,14 @@ async def retry_scan(
     db: AsyncIOMotorDatabase = Depends(get_db),
     current_user: UserOut = Depends(get_current_user),
 ):
-    return await scan_service.retry_scan(db, scan_id, current_user.id)
+    result = await scan_service.retry_scan(db, scan_id, current_user.id)
+    await log_action(
+        db, "scan.retry", "success",
+        user_id=current_user.id,
+        username=current_user.username,
+        details={"scan_id": scan_id},
+    )
+    return result
 
 
 @router.delete("/{scan_id}", status_code=204)
@@ -68,6 +90,12 @@ async def delete_scan(
     current_user: UserOut = Depends(get_current_user),
 ):
     await scan_service.delete_scan(db, scan_id, current_user.id)
+    await log_action(
+        db, "scan.delete", "success",
+        user_id=current_user.id,
+        username=current_user.username,
+        details={"scan_id": scan_id},
+    )
 
 
 @router.get("/{scan_id}/exploits")

@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.api.deps import require_admin
 from app.schemas.user import UserCreate, UserOut
 from app.services import auth_service
+from app.services.audit_service import log_action
 from app.models.user import UserRole, UserStatus
 from app.utils.helpers import doc_to_out
 
@@ -38,7 +39,14 @@ async def create_user(
       • Strong password (>=12 chars, upper/lower/digit/special — see schemas/user.py)
       • Unique username + email (checked in auth_service.register_user)
     """
-    return await auth_service.register_user(db, data)
+    result = await auth_service.register_user(db, data)
+    await log_action(
+        db, "admin.user_create", "success",
+        user_id=current_user.id,
+        username=current_user.username,
+        details={"target_username": data.username, "target_email": data.email, "role": data.role},
+    )
+    return result
 
 
 @router.get("/users")
@@ -82,7 +90,14 @@ async def update_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     doc = await db.users.find_one({"_id": ObjectId(user_id)})
-    return UserOut(**doc_to_out(doc))
+    updated = UserOut(**doc_to_out(doc))
+    await log_action(
+        db, "admin.user_update", "success",
+        user_id=current_user.id,
+        username=current_user.username,
+        details={**data.model_dump(exclude_none=True), "target_username": updated.username, "target_user_id": user_id},
+    )
+    return updated
 
 
 @router.delete("/users/{user_id}", status_code=204)
@@ -122,9 +137,19 @@ async def delete_user(
             {"_id": {"$in": [ObjectId(s) for s in scan_ids]}},
         )
 
+    target_doc = await db.users.find_one({"_id": ObjectId(user_id)}, {"username": 1, "email": 1})
     result = await db.users.delete_one({"_id": ObjectId(user_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
+    await log_action(
+        db, "admin.user_delete", "success",
+        user_id=current_user.id,
+        username=current_user.username,
+        details={
+            "target_user_id": user_id,
+            "target_username": target_doc["username"] if target_doc else None,
+        },
+    )
 
 
 @router.get("/users/{user_id}/detail")

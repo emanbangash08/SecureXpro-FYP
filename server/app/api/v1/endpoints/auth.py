@@ -10,6 +10,7 @@ from app.schemas.user import (
     ResetPasswordRequest, ForgotPasswordResponse,
 )
 from app.services import auth_service
+from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -33,7 +34,24 @@ async def login(
     data: UserLogin,
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    return await auth_service.login_user(db, data.email, data.password)
+    try:
+        result = await auth_service.login_user(db, data.email, data.password)
+        await log_action(
+            db, "auth.login", "success",
+            user_id=result.user.id,
+            username=result.user.username,
+            request=request,
+        )
+        return result
+    except HTTPException as exc:
+        outcome = "banned" if exc.status_code == 403 else "failure"
+        await log_action(
+            db, "auth.login", outcome,
+            username=data.email,
+            request=request,
+            details={"email": data.email},
+        )
+        raise
 
 
 @router.post("/refresh", response_model=TokenResponse)

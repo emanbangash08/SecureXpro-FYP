@@ -23,6 +23,7 @@ uvicorn app.main:app --reload --port 8000
 # Celery worker (Windows)
 celery -A celery_app worker --loglevel=info -Q scans --pool=solo
 ```
+python -m agent_runtime.agent --server-url http://localhost:8000 --email saboor1234@gmail.com --password test9876
 
 ---
 

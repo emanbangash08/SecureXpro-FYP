@@ -259,3 +259,42 @@ export interface Report {
   format: "pdf" | "html";
   url: string;
 }
+
+// Audit Log Types
+export interface AuditLog {
+  id: string;
+  action: string;
+  outcome: string;
+  user_id: string | null;
+  username: string | null;
+  ip: string | null;
+  user_agent: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AuditLogListOut {
+  total: number;
+  items: AuditLog[];
+}
+
+export type AnomalySeverity = "critical" | "high" | "medium" | "low";
+
+export interface Anomaly {
+  type: string;
+  severity: AnomalySeverity;
+  description: string;
+  detected_at: string;
+  ip?: string;
+  count?: number;
+  username?: string;
+  user_id?: string;
+  actor_username?: string;
+  target_username?: string;
+  last_attempt?: string;
+}
+
+export interface AnomalyListOut {
+  count: number;
+  anomalies: Anomaly[];
+}

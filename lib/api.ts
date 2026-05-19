@@ -705,6 +705,32 @@ export const api = {
       }),
   },
 
+  audit: {
+    getLogs: (params?: {
+      user_id?: string;
+      action?: string;
+      outcome?: string;
+      date_from?: string;
+      date_to?: string;
+      skip?: number;
+      limit?: number;
+    }) => {
+      const q = new URLSearchParams();
+      if (params?.user_id) q.set("user_id", params.user_id);
+      if (params?.action) q.set("action", params.action);
+      if (params?.outcome) q.set("outcome", params.outcome);
+      if (params?.date_from) q.set("date_from", params.date_from);
+      if (params?.date_to) q.set("date_to", params.date_to);
+      if (params?.skip != null) q.set("skip", String(params.skip));
+      if (params?.limit != null) q.set("limit", String(params.limit));
+      return request<import("./types").AuditLogListOut>(
+        `/api/v1/admin/audit/logs?${q.toString()}`
+      );
+    },
+    getAnomalies: () =>
+      request<import("./types").AnomalyListOut>("/api/v1/admin/audit/anomalies"),
+  },
+
   auth: {
     register: (data: RegisterPayload) =>
       request<{ id: string }>("/api/v1/auth/register", {

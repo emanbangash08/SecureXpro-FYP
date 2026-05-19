@@ -56,7 +56,15 @@
       "Bash(grep -E \"\\\\.\\(tsx|ts|jsx|js\\)$\")",
       "Bash(xargs grep -l \"report\")",
       "PowerShell(cd \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\"; Get-ChildItem -Recurse -Exclude node_modules -File -ErrorAction SilentlyContinue | Where-Object {$_.Extension -match '\\\\.\\(pdf|docx|doc|txt|md\\)$'} | Select-Object FullName)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Read(//e/flutter projects/FYP/**)",
+      "Bash(nmap --version)",
+      "Bash(python _check_agents.py)",
+      "Bash(..\\\\venv\\\\Scripts\\\\python _check_agents.py)",
+      "PowerShell(& \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\\\\venv\\\\Scripts\\\\python.exe\" \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\\\\server\\\\_check_agents.py\" 2>&1)",
+      "PowerShell(& \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\\\\server\\\\venv\\\\Scripts\\\\python.exe\" \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\\\\server\\\\_check_agents.py\" 2>&1)",
+      "Bash(Get-ChildItem -Path \"e:\\\\flutter projects\\\\FYP\\\\SecureXpro-FYP\" -Recurse)",
+      "Bash(Select-Object FullName)"
     ],
     "additionalDirectories": [
       "e:\\flutter projects\\FYP\\SecureXpro-FYP\\app\\api\\v1"
